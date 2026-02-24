@@ -148,7 +148,10 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
                 if is_korean {
                     eprintln!("  {} 에서 didyoumean 블록 제거 (백업: {})", rc, backup);
                 } else {
-                    eprintln!("  Removed didyoumean block from {} (backup: {})", rc, backup);
+                    eprintln!(
+                        "  Removed didyoumean block from {} (backup: {})",
+                        rc, backup
+                    );
                 }
             } else if is_korean {
                 eprintln!("  {} 에 didyoumean 블록 없음 (건너뜀)", rc);

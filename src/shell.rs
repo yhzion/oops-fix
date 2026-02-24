@@ -98,5 +98,4 @@ mod tests {
         assert!(zsh.contains("__DYM_RUNNING"));
         assert!(bash.contains("__DYM_RUNNING"));
     }
-
 }

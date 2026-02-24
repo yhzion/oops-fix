@@ -129,7 +129,10 @@ mod tests {
         // "claued" → "claude": transposition, len 6, no close 2nd
         let candidates = vec!["claude".to_string(), "clang".to_string()];
         let result = suggest("claued", &candidates, 2, 5);
-        assert_eq!(result, SuggestResult::ConfidentCorrect("claude".to_string()));
+        assert_eq!(
+            result,
+            SuggestResult::ConfidentCorrect("claude".to_string())
+        );
     }
 
     #[test]
