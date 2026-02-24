@@ -68,23 +68,6 @@ command_not_found_handle() {
         .to_string()
 }
 
-pub fn uninstall_instructions() -> String {
-    r#"To uninstall didyoumean:
-
-1. Remove the didyoumean binary:
-   rm ~/.local/bin/didyoumean
-
-2. Remove the initialization block from your shell config file
-   (.zshrc or .bashrc). Delete the lines between:
-   # >>> didyoumean initialize >>>
-   ...
-   # <<< didyoumean initialize <<<
-
-3. Restart your shell or run: exec $SHELL
-"#
-    .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,10 +99,4 @@ mod tests {
         assert!(bash.contains("__DYM_RUNNING"));
     }
 
-    #[test]
-    fn test_uninstall_outputs_instructions() {
-        let output = uninstall_instructions();
-        assert!(!output.is_empty());
-        assert!(output.contains("didyoumean"));
-    }
 }

@@ -10,7 +10,10 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let exit_code = match args.get(1).map(|s| s.as_str()) {
         Some("init") => cmd_init(args.get(2).map(|s| s.as_str())),
-        Some("uninstall") => cmd_uninstall(),
+        Some("uninstall") => {
+            let skip_confirm = args.iter().any(|a| a == "--yes" || a == "-y");
+            cmd_uninstall(skip_confirm)
+        }
         Some("--version") => cmd_version(),
         Some("--help") | None => cmd_help(),
         Some(cmd) => cmd_suggest(cmd, &args[2..]),
@@ -35,8 +38,145 @@ fn cmd_init(shell_arg: Option<&str>) -> i32 {
     0
 }
 
-fn cmd_uninstall() -> i32 {
-    print!("{}", shell::uninstall_instructions());
+fn cmd_uninstall(skip_confirm: bool) -> i32 {
+    let is_korean = env::var("LANG")
+        .map(|v| v.starts_with("ko"))
+        .unwrap_or(false);
+
+    let home = match env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => {
+            eprintln!("Error: HOME not set");
+            return 1;
+        }
+    };
+
+    let shell_name = env::var("SHELL")
+        .ok()
+        .and_then(|s| s.rsplit('/').next().map(|s| s.to_string()))
+        .unwrap_or_default();
+
+    let rc_file = match shell_name.as_str() {
+        "zsh" => Some(format!("{}/.zshrc", home)),
+        "bash" => Some(format!("{}/.bashrc", home)),
+        _ => None,
+    };
+
+    let binary_path = env::current_exe()
+        .ok()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| format!("{}/.local/bin/didyoumean", home));
+
+    // Show what will be removed
+    if is_korean {
+        eprintln!("제거 대상:");
+        eprintln!("  - 바이너리: {}", binary_path);
+        if let Some(ref rc) = rc_file {
+            eprintln!("  - 쉘 설정: {} (didyoumean 블록)", rc);
+        }
+    } else {
+        eprintln!("Will remove:");
+        eprintln!("  - Binary: {}", binary_path);
+        if let Some(ref rc) = rc_file {
+            eprintln!("  - Shell config: {} (didyoumean block)", rc);
+        }
+    }
+
+    if !skip_confirm {
+        if !io::stdin().is_terminal() {
+            if is_korean {
+                eprintln!("비대화형 모드에서는 --yes 플래그가 필요합니다.");
+            } else {
+                eprintln!("Use --yes to confirm in non-interactive mode.");
+            }
+            return 1;
+        }
+        if is_korean {
+            eprint!("\n계속하시겠습니까? [y/N] ");
+        } else {
+            eprint!("\nProceed? [y/N] ");
+        }
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).ok();
+        if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+            if is_korean {
+                eprintln!("취소되었습니다.");
+            } else {
+                eprintln!("Cancelled.");
+            }
+            return 1;
+        }
+    }
+
+    // Remove init block from RC file
+    if let Some(ref rc) = rc_file {
+        if let Ok(content) = std::fs::read_to_string(rc) {
+            let start = "# >>> didyoumean initialize >>>";
+            let end = "# <<< didyoumean initialize <<<";
+
+            if content.contains(start) {
+                let backup = format!("{}.dym.bak", rc);
+                let _ = std::fs::copy(rc, &backup);
+
+                let mut new_lines: Vec<&str> = Vec::new();
+                let mut skip = false;
+                for line in content.lines() {
+                    if line.contains(start) {
+                        skip = true;
+                        continue;
+                    }
+                    if line.contains(end) {
+                        skip = false;
+                        continue;
+                    }
+                    if !skip {
+                        new_lines.push(line);
+                    }
+                }
+
+                // Trim trailing empty lines left by block removal
+                while new_lines.last() == Some(&"") {
+                    new_lines.pop();
+                }
+                let mut final_content = new_lines.join("\n");
+                final_content.push('\n');
+
+                if let Err(e) = std::fs::write(rc, final_content) {
+                    eprintln!("Error writing {}: {}", rc, e);
+                    return 1;
+                }
+                if is_korean {
+                    eprintln!("  {} 에서 didyoumean 블록 제거 (백업: {})", rc, backup);
+                } else {
+                    eprintln!("  Removed didyoumean block from {} (backup: {})", rc, backup);
+                }
+            } else if is_korean {
+                eprintln!("  {} 에 didyoumean 블록 없음 (건너뜀)", rc);
+            } else {
+                eprintln!("  No didyoumean block in {} (skipped)", rc);
+            }
+        }
+    }
+
+    // Remove binary
+    if std::path::Path::new(&binary_path).exists() {
+        if let Err(e) = std::fs::remove_file(&binary_path) {
+            eprintln!("Error removing {}: {}", binary_path, e);
+            return 1;
+        }
+        if is_korean {
+            eprintln!("  {} 삭제 완료", binary_path);
+        } else {
+            eprintln!("  Removed {}", binary_path);
+        }
+    }
+
+    eprintln!();
+    if is_korean {
+        eprintln!("didyoumean이 제거되었습니다. 'exec $SHELL'로 쉘을 재시작하세요.");
+    } else {
+        eprintln!("didyoumean uninstalled. Run 'exec $SHELL' to restart your shell.");
+    }
     0
 }
 
@@ -53,7 +193,7 @@ didyoumean - Shell command typo correction tool
 Usage:
   didyoumean <command>          Suggest corrections for a mistyped command
   didyoumean init <shell>       Output shell integration code (zsh, bash)
-  didyoumean uninstall          Show uninstall instructions
+  didyoumean uninstall [-y]     Remove binary and shell config
   didyoumean --version          Show version
   didyoumean --help             Show this help
 
