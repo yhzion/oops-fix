@@ -1,6 +1,19 @@
 [package]
 name = "didyoumean"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "Shell command typo correction tool using Damerau-Levenshtein distance"
+license = "MIT"
+repository = "https://github.com/yhzion/didyoumean"
+keywords = ["cli", "shell", "typo", "autocorrect", "command-not-found"]
+categories = ["command-line-utilities"]
 
 [dependencies]
+strsim = "0.11"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
