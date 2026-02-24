@@ -8,6 +8,7 @@ use strsim::damerau_levenshtein;
 
 #[derive(Debug, PartialEq)]
 pub enum SuggestResult {
+    ConfidentCorrect(String),
     AutoCorrect(String),
     Suggestions(Vec<String>),
     NoMatch,
@@ -44,7 +45,19 @@ pub fn suggest(
     let best_count = matches.iter().filter(|(_, d)| *d == best_distance).count();
 
     if best_distance == 1 && best_count == 1 {
-        SuggestResult::AutoCorrect(matches[0].0.clone())
+        let second_best_distance = matches
+            .iter()
+            .find(|(_, d)| *d > best_distance)
+            .map(|(_, d)| *d);
+        let gap = second_best_distance
+            .map(|d| d - best_distance)
+            .unwrap_or(usize::MAX);
+
+        if cmd_len >= 3 && gap >= 2 {
+            SuggestResult::ConfidentCorrect(matches[0].0.clone())
+        } else {
+            SuggestResult::AutoCorrect(matches[0].0.clone())
+        }
     } else {
         let suggestions: Vec<String> = matches
             .into_iter()
@@ -112,10 +125,44 @@ mod tests {
     }
 
     #[test]
-    fn test_distance_1_single_match() {
+    fn test_distance_1_single_match_confident() {
+        // len >= 3, unique distance-1 match, no close 2nd → ConfidentCorrect
         let candidates = vec!["git".to_string()];
         let result = suggest("gti", &candidates, 2, 5);
-        assert_eq!(result, SuggestResult::AutoCorrect("git".to_string()));
+        assert_eq!(result, SuggestResult::ConfidentCorrect("git".to_string()));
+    }
+
+    #[test]
+    fn test_confident_correct_long_command() {
+        // "claued" → "claude": transposition, len 6, no close 2nd
+        let candidates = vec!["claude".to_string(), "clang".to_string()];
+        let result = suggest("claued", &candidates, 2, 5);
+        assert_eq!(result, SuggestResult::ConfidentCorrect("claude".to_string()));
+    }
+
+    #[test]
+    fn test_not_confident_when_short() {
+        // len 2 < 3 → AutoCorrect (not ConfidentCorrect)
+        let candidates = vec!["ls".to_string()];
+        let result = suggest("sl", &candidates, 2, 5);
+        assert_eq!(result, SuggestResult::AutoCorrect("ls".to_string()));
+    }
+
+    #[test]
+    fn test_not_confident_when_close_second() {
+        // "abd" distance 1 from "abc", "aec" distance 1... wait, both distance 1 = multiple matches
+        // Need: 1st at distance 1, 2nd at distance 2 (gap = 1 < 2)
+        // "abcd" vs "abce" = 1 (substitution), "abcd" vs "abdc" would be transposition...
+        // Input "abce", candidates: ["abcd", "abca"]
+        // "abce" vs "abcd" = 1, "abce" vs "abca" = 1 → multiple matches, not AutoCorrect
+        // Better: input "abce", candidates: ["abcd", "xbce"]
+        // "abce" vs "abcd" = 1, "abce" vs "xbce" = 1 → still multiple
+        // Need one at distance 1, one at distance 2:
+        // Input "abce", candidates: ["abcd", "abxy"]
+        // "abce" vs "abcd" = 1, "abce" vs "abxy" = 2 → gap = 1 < 2
+        let candidates = vec!["abcd".to_string(), "abxy".to_string()];
+        let result = suggest("abce", &candidates, 2, 5);
+        assert_eq!(result, SuggestResult::AutoCorrect("abcd".to_string()));
     }
 
     #[test]

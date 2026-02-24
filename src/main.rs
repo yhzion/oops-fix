@@ -2,7 +2,7 @@ mod shell;
 mod suggest;
 
 use std::env;
-use std::io::IsTerminal;
+use std::io::{self, BufRead, IsTerminal};
 
 use suggest::SuggestResult;
 
@@ -84,10 +84,23 @@ fn cmd_suggest(cmd: &str) -> i32 {
         .unwrap_or(false);
     let use_color = color_enabled();
 
-    let candidates = suggest::scan_path();
+    let candidates = if !io::stdin().is_terminal() {
+        read_candidates_from_stdin()
+    } else {
+        suggest::scan_path()
+    };
     let result = suggest::suggest(cmd, &candidates, max_distance, max_suggestions);
 
     match result {
+        SuggestResult::ConfidentCorrect(ref corrected) if !is_root => {
+            eprintln!(
+                "[dym] '{}' → '{}'",
+                cmd,
+                colorize(corrected, Color::YellowBold, use_color)
+            );
+            println!("{}", corrected);
+            0
+        }
         SuggestResult::AutoCorrect(ref corrected) if auto_correct_enabled && !is_root => {
             if is_korean {
                 eprintln!(
@@ -105,7 +118,7 @@ fn cmd_suggest(cmd: &str) -> i32 {
             println!("{}", corrected);
             0
         }
-        SuggestResult::AutoCorrect(corrected) => {
+        SuggestResult::ConfidentCorrect(corrected) | SuggestResult::AutoCorrect(corrected) => {
             print_suggestions(cmd, std::slice::from_ref(&corrected), is_korean, use_color);
             println!("{}", corrected);
             1
@@ -166,6 +179,20 @@ fn colorize(text: &str, color: Color, enabled: bool) -> String {
         Color::YellowBold => format!("\x1b[1;33m{}\x1b[0m", text),
         Color::Green => format!("\x1b[32m{}\x1b[0m", text),
     }
+}
+
+fn read_candidates_from_stdin() -> Vec<String> {
+    let stdin = io::stdin();
+    let mut seen = std::collections::HashSet::new();
+    for line in stdin.lock().lines().map_while(Result::ok) {
+        let trimmed = line.trim().to_string();
+        if !trimmed.is_empty() {
+            seen.insert(trimmed);
+        }
+    }
+    let mut result: Vec<String> = seen.into_iter().collect();
+    result.sort();
+    result
 }
 
 fn color_enabled() -> bool {
