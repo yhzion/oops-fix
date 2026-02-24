@@ -1,5 +1,6 @@
 mod shell;
 mod suggest;
+mod update;
 
 use std::env;
 use std::io::{self, BufRead, IsTerminal};
@@ -15,12 +16,17 @@ fn main() {
 fn run(args: &[String]) -> i32 {
     match args.get(1).map(|s| s.as_str()) {
         Some("init") => cmd_init(args.get(2).map(|s| s.as_str())),
+        Some("update") => {
+            let check_only = args.iter().any(|a| a == "--check");
+            update::update(check_only)
+        }
         Some("uninstall") => {
             let skip_confirm = args.iter().any(|a| a == "--yes" || a == "-y");
             cmd_uninstall(skip_confirm)
         }
         Some("--version") => cmd_version(),
         Some("--help") | None => cmd_help(),
+        Some("--check-update-bg") => update::background_check(),
         Some(cmd) => cmd_suggest(cmd, &args[2..]),
     }
 }
@@ -200,6 +206,7 @@ didyoumean - Typo → Fix → Run. Instantly.
 USAGE
   didyoumean <command> [args...]     Correct a mistyped command
   didyoumean init <zsh|bash>         Output shell integration code
+  didyoumean update [--check]        Check for / install updates
   didyoumean uninstall [-y]          Remove didyoumean from your system
   didyoumean --version               Show version
   didyoumean --help                  Show this help
@@ -361,6 +368,10 @@ fn cmd_suggest(cmd: &str, extra_args: &[String]) -> i32 {
     for line in &output.stdout_lines {
         println!("{}", line);
     }
+
+    // Non-blocking update notification
+    update::maybe_notify_update();
+
     output.exit_code
 }
 
@@ -948,6 +959,14 @@ mod tests {
         assert!(!confirm_action(""));
         assert!(!confirm_action("yep"));
         assert!(!confirm_action("nope"));
+    }
+
+    // --- run routing: update ---
+
+    #[test]
+    fn test_help_text_contains_update() {
+        let text = help_text();
+        assert!(text.contains("update"));
     }
 
     // --- format_suggest_result with color ---

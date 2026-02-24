@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Self-update command: `didyoumean update [--check]`
+- Background update notification on command typo (cached, non-blocking, every 24h)
+- SHA256 checksum verification on update
+- Version cache at `~/.cache/didyoumean/latest-version`
+
 ## [0.2.0] - 2026-02-24
 
 ### Added

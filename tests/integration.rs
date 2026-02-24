@@ -249,6 +249,23 @@ fn test_suggest_custom_max_distance() {
     assert_eq!(output.status.code(), Some(2));
 }
 
+// --- update tests ---
+
+#[test]
+fn test_update_check_flag_recognized() {
+    // --check should be recognized (may fail due to network, but should not panic)
+    let output = dym_bin().args(["update", "--check"]).output().unwrap();
+    // exit 0 = up to date or update available, exit 1 = network error
+    assert!(output.status.code().unwrap() <= 1);
+}
+
+#[test]
+fn test_help_mentions_update() {
+    let output = dym_bin().arg("--help").output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("update"));
+}
+
 // --- uninstall tests ---
 
 #[test]
