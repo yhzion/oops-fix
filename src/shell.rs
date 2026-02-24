@@ -7,27 +7,27 @@ command_not_found_handler() {
     fi
     export __OOPS_RUNNING=1
 
-    local output exit_code
-    output=$(print -l ${(ko)commands} | oops "$@")
-    exit_code=$?
+    {
+        local output exit_code
+        output=$(print -l ${(ko)commands} | oops "$@")
+        exit_code=$?
 
-    case $exit_code in
-        0)
-            "$output" "${@:2}"
-            local ret=$?
-            unset __OOPS_RUNNING
-            return $ret
-            ;;
-        1|2)
-            unset __OOPS_RUNNING
-            return 127
-            ;;
-        *)
-            unset __OOPS_RUNNING
-            echo "zsh: command not found: $1" >&2
-            return 127
-            ;;
-    esac
+        case $exit_code in
+            0)
+                "$output" "${@:2}"
+                return $?
+                ;;
+            1|2)
+                return 127
+                ;;
+            *)
+                echo "zsh: command not found: $1" >&2
+                return 127
+                ;;
+        esac
+    } always {
+        unset __OOPS_RUNNING
+    }
 }
 # <<< oops-fix initialize <<<"#
         .to_string()
@@ -41,6 +41,7 @@ command_not_found_handle() {
         return 127
     fi
     export __OOPS_RUNNING=1
+    trap 'unset __OOPS_RUNNING; trap - INT TERM' INT TERM
 
     local output exit_code
     output=$(compgen -c | sort -u | oops "$@")
@@ -51,14 +52,17 @@ command_not_found_handle() {
             "$output" "${@:2}"
             local ret=$?
             unset __OOPS_RUNNING
+            trap - INT TERM
             return $ret
             ;;
         1|2)
             unset __OOPS_RUNNING
+            trap - INT TERM
             return 127
             ;;
         *)
             unset __OOPS_RUNNING
+            trap - INT TERM
             echo "bash: $1: command not found" >&2
             return 127
             ;;
@@ -97,5 +101,18 @@ mod tests {
         let bash = init_bash();
         assert!(zsh.contains("__OOPS_RUNNING"));
         assert!(bash.contains("__OOPS_RUNNING"));
+    }
+
+    #[test]
+    fn test_init_zsh_has_always_cleanup() {
+        let zsh = init_zsh();
+        assert!(zsh.contains("} always {"));
+        assert!(zsh.contains("unset __OOPS_RUNNING"));
+    }
+
+    #[test]
+    fn test_init_bash_has_signal_trap() {
+        let bash = init_bash();
+        assert!(bash.contains("trap 'unset __OOPS_RUNNING; trap - INT TERM' INT TERM"));
     }
 }
