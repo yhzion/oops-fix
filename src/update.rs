@@ -4,6 +4,47 @@ use std::process::Command;
 const GITHUB_API_URL: &str = "https://api.github.com/repos/yhzion/didyoumean/releases/latest";
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
+// --- Pure data types ---
+
+pub struct UpdateNotification {
+    pub message: Option<String>,
+    pub should_bg_check: bool,
+}
+
+pub enum UpdateDecision {
+    AlreadyUpToDate(String),
+    CheckOnly {
+        current: String,
+        latest: String,
+    },
+    NeedUpdate {
+        current: String,
+        latest: String,
+        latest_tag: String,
+    },
+    FetchError(String),
+    ParseError,
+}
+
+pub struct DownloadPlan {
+    pub filename: String,
+    pub tarball_url: String,
+    pub checksum_url: String,
+}
+
+pub enum UpdateAction {
+    Exit {
+        stderr_lines: Vec<String>,
+        exit_code: i32,
+        cache_value: Option<String>,
+    },
+    DoUpdate {
+        current: String,
+        latest: String,
+        latest_tag: String,
+    },
+}
+
 // --- Pure functions ---
 
 pub fn parse_semver(version: &str) -> Option<(u32, u32, u32)> {
@@ -104,6 +145,147 @@ pub fn read_cached_version(cache_path: &Path) -> Option<String> {
     }
 }
 
+/// Pure function: decide what update notification to show and whether to background-check.
+pub fn build_update_notification(
+    cached_version: Option<&str>,
+    current_version: &str,
+    cache_is_stale: bool,
+) -> UpdateNotification {
+    let message = cached_version.and_then(|latest| {
+        let latest_clean = latest.strip_prefix('v').unwrap_or(latest);
+        if is_newer_version(current_version, latest_clean) {
+            Some(format!(
+                "[dym] v{} available (current: v{}). Run 'didyoumean update'",
+                latest_clean, current_version
+            ))
+        } else {
+            None
+        }
+    });
+
+    UpdateNotification {
+        message,
+        should_bg_check: cache_is_stale,
+    }
+}
+
+/// Pure function: decide update action from fetched JSON result.
+pub fn decide_update(
+    current: &str,
+    fetch_result: Result<&str, &str>,
+    check_only: bool,
+) -> UpdateDecision {
+    let json = match fetch_result {
+        Ok(j) => j,
+        Err(e) => return UpdateDecision::FetchError(e.to_string()),
+    };
+
+    let latest_tag = match parse_latest_version(json) {
+        Some(v) => v,
+        None => return UpdateDecision::ParseError,
+    };
+
+    let latest = latest_tag
+        .strip_prefix('v')
+        .unwrap_or(&latest_tag)
+        .to_string();
+
+    if !is_newer_version(current, &latest) {
+        return UpdateDecision::AlreadyUpToDate(current.to_string());
+    }
+
+    if check_only {
+        return UpdateDecision::CheckOnly {
+            current: current.to_string(),
+            latest,
+        };
+    }
+
+    UpdateDecision::NeedUpdate {
+        current: current.to_string(),
+        latest,
+        latest_tag,
+    }
+}
+
+/// Pure function: build download URLs from version tag and target triple.
+pub fn build_download_plan(latest_tag: &str, target: &str) -> DownloadPlan {
+    let base_url = format!(
+        "https://github.com/yhzion/didyoumean/releases/download/{}",
+        latest_tag
+    );
+    let filename = format!("didyoumean-{}.tar.gz", target);
+    let tarball_url = format!("{}/{}", base_url, filename);
+    let checksum_url = format!("{}/SHA256SUMS", base_url);
+
+    DownloadPlan {
+        filename,
+        tarball_url,
+        checksum_url,
+    }
+}
+
+/// Pure function: verify checksum matches expected.
+pub fn verify_checksum(
+    checksums_content: &str,
+    filename: &str,
+    actual_hash: &str,
+) -> Result<(), String> {
+    let expected = parse_checksum_for_file(checksums_content, filename)
+        .ok_or_else(|| format!("checksum not found for {}", filename))?;
+
+    if expected != actual_hash {
+        return Err(format!(
+            "checksum mismatch\n  Expected: {}\n  Actual:   {}",
+            expected, actual_hash
+        ));
+    }
+
+    Ok(())
+}
+
+/// Pure function: convert UpdateDecision into actionable output.
+/// Returns either a terminal output (messages + exit code) or a do-update signal.
+pub fn format_update_decision(decision: UpdateDecision) -> UpdateAction {
+    match decision {
+        UpdateDecision::FetchError(e) => UpdateAction::Exit {
+            stderr_lines: vec![
+                format!("Error: {}", e),
+                "Reinstall: curl -sSfL https://raw.githubusercontent.com/yhzion/didyoumean/main/install.sh | bash".to_string(),
+            ],
+            exit_code: 1,
+            cache_value: None,
+        },
+        UpdateDecision::ParseError => UpdateAction::Exit {
+            stderr_lines: vec!["Error: could not parse latest version".to_string()],
+            exit_code: 1,
+            cache_value: None,
+        },
+        UpdateDecision::AlreadyUpToDate(v) => UpdateAction::Exit {
+            stderr_lines: vec![format!("Already up to date (v{}).", v)],
+            exit_code: 0,
+            cache_value: Some(format!("v{}", v)),
+        },
+        UpdateDecision::CheckOnly { current, latest } => UpdateAction::Exit {
+            stderr_lines: vec![
+                format!("v{} available (current: v{})", latest, current),
+                "  Run 'didyoumean update' to install".to_string(),
+            ],
+            exit_code: 0,
+            cache_value: Some(format!("v{}", latest)),
+        },
+        UpdateDecision::NeedUpdate {
+            current,
+            latest,
+            latest_tag,
+        } => UpdateAction::DoUpdate {
+            current,
+            latest,
+            latest_tag,
+        },
+    }
+}
+
 // --- I/O functions ---
 
 fn fetch_url(url: &str) -> Result<String, String> {
@@ -174,7 +356,7 @@ fn write_cache(version: &str) {
     let _ = std::fs::write(&cache_path, version);
 }
 
-// --- Commands ---
+// --- Commands (thin I/O wrappers) ---
 
 /// Called from cmd_suggest: show notification if update available, spawn background check if stale.
 pub fn maybe_notify_update() {
@@ -182,20 +364,17 @@ pub fn maybe_notify_update() {
         return;
     };
 
-    // Check cached version
-    if let Some(latest) = read_cached_version(&cache_path) {
-        let current = env!("CARGO_PKG_VERSION");
-        let latest_clean = latest.strip_prefix('v').unwrap_or(&latest);
-        if is_newer_version(current, latest_clean) {
-            eprintln!(
-                "[dym] v{} available (current: v{}). Run 'didyoumean update'",
-                latest_clean, current
-            );
-        }
+    let cached = read_cached_version(&cache_path);
+    let current = env!("CARGO_PKG_VERSION");
+    let stale = should_check_update(&cache_path);
+
+    let notification = build_update_notification(cached.as_deref(), current, stale);
+
+    if let Some(msg) = notification.message {
+        eprintln!("{}", msg);
     }
 
-    // Spawn background check if stale
-    if should_check_update(&cache_path) {
+    if notification.should_bg_check {
         if let Ok(exe) = std::env::current_exe() {
             let _ = Command::new(exe)
                 .arg("--check-update-bg")
@@ -228,39 +407,42 @@ pub fn update(check_only: bool) -> i32 {
 
     eprintln!("Checking for updates...");
 
-    let json = match fetch_url(GITHUB_API_URL) {
-        Ok(j) => j,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            eprintln!("Reinstall: curl -sSfL https://raw.githubusercontent.com/yhzion/didyoumean/main/install.sh | bash");
-            return 1;
+    let fetch_result = fetch_url(GITHUB_API_URL);
+    let decision = decide_update(
+        current,
+        fetch_result.as_deref().map_err(|e| e.as_str()),
+        check_only,
+    );
+
+    let action = format_update_decision(decision);
+
+    match action {
+        UpdateAction::Exit {
+            stderr_lines,
+            exit_code,
+            cache_value,
+        } => {
+            if let Some(v) = cache_value {
+                write_cache(&v);
+            }
+            for line in &stderr_lines {
+                eprintln!("{}", line);
+            }
+            exit_code
         }
-    };
-
-    let latest_tag = match parse_latest_version(&json) {
-        Some(v) => v,
-        None => {
-            eprintln!("Error: could not parse latest version");
-            return 1;
+        UpdateAction::DoUpdate {
+            current: c,
+            latest: l,
+            latest_tag: tag,
+        } => {
+            write_cache(&tag);
+            do_update(&c, &l, &tag)
         }
-    };
-
-    let latest = latest_tag.strip_prefix('v').unwrap_or(&latest_tag);
-
-    // Update cache regardless
-    write_cache(&latest_tag);
-
-    if !is_newer_version(current, latest) {
-        eprintln!("Already up to date (v{}).", current);
-        return 0;
     }
+}
 
-    if check_only {
-        eprintln!("v{} available (current: v{})", latest, current);
-        eprintln!("  Run 'didyoumean update' to install");
-        return 0;
-    }
-
+/// Performs the actual download + verify + replace sequence.
+fn do_update(current: &str, latest: &str, latest_tag: &str) -> i32 {
     let target = match detect_target() {
         Ok(t) => t,
         Err(e) => {
@@ -269,15 +451,9 @@ pub fn update(check_only: bool) -> i32 {
         }
     };
 
-    let base_url = format!(
-        "https://github.com/yhzion/didyoumean/releases/download/{}",
-        latest_tag
-    );
-    let filename = format!("didyoumean-{}.tar.gz", target);
-    let tarball_url = format!("{}/{}", base_url, filename);
-    let checksum_url = format!("{}/SHA256SUMS", base_url);
+    let plan = build_download_plan(latest_tag, &target);
 
-    eprintln!("Updating didyoumean v{} → v{}...", current, latest);
+    eprintln!("Updating didyoumean v{} \u{2192} v{}...", current, latest);
 
     // Create temp dir
     let tmpdir = std::env::temp_dir().join(format!("dym_update_{}", std::process::id()));
@@ -288,15 +464,15 @@ pub fn update(check_only: bool) -> i32 {
     let _cleanup = TempDirGuard(tmpdir.clone());
 
     // Download
-    let tarball_path = tmpdir.join(&filename);
+    let tarball_path = tmpdir.join(&plan.filename);
     let checksums_path = tmpdir.join("SHA256SUMS");
 
-    eprintln!("  Downloading {}...", filename);
-    if let Err(e) = download_file(&tarball_url, &tarball_path) {
+    eprintln!("  Downloading {}...", plan.filename);
+    if let Err(e) = download_file(&plan.tarball_url, &tarball_path) {
         eprintln!("Error: {}", e);
         return 1;
     }
-    if let Err(e) = download_file(&checksum_url, &checksums_path) {
+    if let Err(e) = download_file(&plan.checksum_url, &checksums_path) {
         eprintln!("Error: {}", e);
         return 1;
     }
@@ -311,14 +487,6 @@ pub fn update(check_only: bool) -> i32 {
         }
     };
 
-    let expected = match parse_checksum_for_file(&checksums_content, &filename) {
-        Some(c) => c,
-        None => {
-            eprintln!("Error: checksum not found for {}", filename);
-            return 1;
-        }
-    };
-
     let actual = match compute_sha256(&tarball_path) {
         Ok(c) => c,
         Err(e) => {
@@ -327,10 +495,8 @@ pub fn update(check_only: bool) -> i32 {
         }
     };
 
-    if expected != actual {
-        eprintln!("Error: checksum mismatch");
-        eprintln!("  Expected: {}", expected);
-        eprintln!("  Actual:   {}", actual);
+    if let Err(e) = verify_checksum(&checksums_content, &plan.filename, &actual) {
+        eprintln!("Error: {}", e);
         return 1;
     }
 
@@ -380,7 +546,7 @@ pub fn update(check_only: bool) -> i32 {
     }
 
     eprintln!("  Replaced {}", current_exe.display());
-    eprintln!("Updated successfully (v{} → v{}).", current, latest);
+    eprintln!("Updated successfully (v{} \u{2192} v{}).", current, latest);
     0
 }
 
@@ -545,7 +711,6 @@ mod tests {
 
     #[test]
     fn test_cache_dir_returns_some() {
-        // HOME is always set in test environment
         let dir = cache_dir();
         assert!(dir.is_some());
         let path = dir.unwrap();
@@ -590,5 +755,381 @@ mod tests {
     #[test]
     fn test_read_cached_version_nonexistent() {
         assert_eq!(read_cached_version(Path::new("/nonexistent/cache")), None);
+    }
+
+    // --- cache_dir with XDG ---
+
+    #[test]
+    fn test_cache_dir_xdg() {
+        let old = std::env::var("XDG_CACHE_HOME").ok();
+        std::env::set_var("XDG_CACHE_HOME", "/tmp/dym_xdg_test");
+        let dir = cache_dir();
+        assert_eq!(dir, Some(PathBuf::from("/tmp/dym_xdg_test/didyoumean")));
+        match old {
+            Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
+            None => std::env::remove_var("XDG_CACHE_HOME"),
+        }
+    }
+
+    // --- compute_sha256 ---
+
+    #[test]
+    fn test_compute_sha256_known_file() {
+        let tmp = std::env::temp_dir().join("dym_test_sha256");
+        std::fs::write(&tmp, "hello\n").unwrap();
+        let result = compute_sha256(&tmp);
+        assert!(result.is_ok());
+        let hash = result.unwrap();
+        assert_eq!(hash.len(), 64); // SHA256 = 64 hex chars
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn test_compute_sha256_nonexistent() {
+        let result = compute_sha256(Path::new("/nonexistent/dym_test_sha256"));
+        assert!(result.is_err());
+    }
+
+    // --- write_cache ---
+
+    #[test]
+    fn test_write_cache_creates_file() {
+        let tmp = std::env::temp_dir().join("dym_test_write_cache_dir");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        let old_xdg = std::env::var("XDG_CACHE_HOME").ok();
+        std::env::set_var("XDG_CACHE_HOME", &tmp);
+
+        write_cache("v0.5.0");
+
+        let cached = std::fs::read_to_string(tmp.join("didyoumean/latest-version"));
+        assert!(cached.is_ok());
+        assert_eq!(cached.unwrap(), "v0.5.0");
+
+        match old_xdg {
+            Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
+            None => std::env::remove_var("XDG_CACHE_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // --- cache_version_path ---
+
+    #[test]
+    fn test_cache_version_path_returns_some() {
+        let path = cache_version_path();
+        assert!(path.is_some());
+        assert!(path.unwrap().to_str().unwrap().contains("latest-version"));
+    }
+
+    // --- TempDirGuard ---
+
+    #[test]
+    fn test_temp_dir_guard_cleanup() {
+        let tmp = std::env::temp_dir().join("dym_test_guard");
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("file.txt"), "test").unwrap();
+        assert!(tmp.exists());
+        {
+            let _guard = TempDirGuard(tmp.clone());
+        } // guard dropped here
+        assert!(!tmp.exists());
+    }
+
+    // === NEW: build_update_notification ===
+
+    #[test]
+    fn test_notification_newer_available() {
+        let n = build_update_notification(Some("v1.0.0"), "0.2.0", false);
+        assert!(n.message.is_some());
+        let msg = n.message.unwrap();
+        assert!(msg.contains("1.0.0"));
+        assert!(msg.contains("0.2.0"));
+        assert!(msg.contains("didyoumean update"));
+        assert!(!n.should_bg_check);
+    }
+
+    #[test]
+    fn test_notification_already_up_to_date() {
+        let n = build_update_notification(Some("v0.2.0"), "0.2.0", false);
+        assert!(n.message.is_none());
+        assert!(!n.should_bg_check);
+    }
+
+    #[test]
+    fn test_notification_older_cached() {
+        let n = build_update_notification(Some("v0.1.0"), "0.2.0", false);
+        assert!(n.message.is_none());
+    }
+
+    #[test]
+    fn test_notification_no_cache() {
+        let n = build_update_notification(None, "0.2.0", true);
+        assert!(n.message.is_none());
+        assert!(n.should_bg_check);
+    }
+
+    #[test]
+    fn test_notification_stale_cache_triggers_bg_check() {
+        let n = build_update_notification(Some("v0.2.0"), "0.2.0", true);
+        assert!(n.message.is_none());
+        assert!(n.should_bg_check);
+    }
+
+    #[test]
+    fn test_notification_newer_with_v_prefix() {
+        let n = build_update_notification(Some("0.5.0"), "0.2.0", false);
+        assert!(n.message.is_some());
+        assert!(n.message.unwrap().contains("0.5.0"));
+    }
+
+    // === NEW: decide_update ===
+
+    #[test]
+    fn test_decide_update_fetch_error() {
+        let d = decide_update("0.2.0", Err("network error"), false);
+        assert!(matches!(d, UpdateDecision::FetchError(e) if e.contains("network")));
+    }
+
+    #[test]
+    fn test_decide_update_parse_error() {
+        let d = decide_update("0.2.0", Ok(r#"{"no_tag": true}"#), false);
+        assert!(matches!(d, UpdateDecision::ParseError));
+    }
+
+    #[test]
+    fn test_decide_update_already_up_to_date() {
+        let json = r#"{"tag_name": "v0.2.0"}"#;
+        let d = decide_update("0.2.0", Ok(json), false);
+        assert!(matches!(d, UpdateDecision::AlreadyUpToDate(v) if v == "0.2.0"));
+    }
+
+    #[test]
+    fn test_decide_update_check_only() {
+        let json = r#"{"tag_name": "v1.0.0"}"#;
+        let d = decide_update("0.2.0", Ok(json), true);
+        match d {
+            UpdateDecision::CheckOnly { current, latest } => {
+                assert_eq!(current, "0.2.0");
+                assert_eq!(latest, "1.0.0");
+            }
+            other => panic!(
+                "Expected CheckOnly, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_decide_update_need_update() {
+        let json = r#"{"tag_name": "v1.0.0"}"#;
+        let d = decide_update("0.2.0", Ok(json), false);
+        match d {
+            UpdateDecision::NeedUpdate {
+                current,
+                latest,
+                latest_tag,
+            } => {
+                assert_eq!(current, "0.2.0");
+                assert_eq!(latest, "1.0.0");
+                assert_eq!(latest_tag, "v1.0.0");
+            }
+            other => panic!(
+                "Expected NeedUpdate, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn test_decide_update_older_remote() {
+        let json = r#"{"tag_name": "v0.1.0"}"#;
+        let d = decide_update("0.2.0", Ok(json), false);
+        assert!(matches!(d, UpdateDecision::AlreadyUpToDate(_)));
+    }
+
+    #[test]
+    fn test_decide_update_without_v_prefix() {
+        let json = r#"{"tag_name": "1.0.0"}"#;
+        let d = decide_update("0.2.0", Ok(json), false);
+        match d {
+            UpdateDecision::NeedUpdate { latest_tag, .. } => {
+                assert_eq!(latest_tag, "1.0.0");
+            }
+            other => panic!(
+                "Expected NeedUpdate, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    // === NEW: build_download_plan ===
+
+    #[test]
+    fn test_download_plan_basic() {
+        let plan = build_download_plan("v1.0.0", "aarch64-apple-darwin");
+        assert_eq!(
+            plan.tarball_url,
+            "https://github.com/yhzion/didyoumean/releases/download/v1.0.0/didyoumean-aarch64-apple-darwin.tar.gz"
+        );
+        assert_eq!(
+            plan.checksum_url,
+            "https://github.com/yhzion/didyoumean/releases/download/v1.0.0/SHA256SUMS"
+        );
+        assert_eq!(plan.filename, "didyoumean-aarch64-apple-darwin.tar.gz");
+    }
+
+    #[test]
+    fn test_download_plan_linux() {
+        let plan = build_download_plan("v0.3.0", "x86_64-unknown-linux-musl");
+        assert!(plan.tarball_url.contains("x86_64-unknown-linux-musl"));
+        assert!(plan.tarball_url.contains("v0.3.0"));
+    }
+
+    #[test]
+    fn test_download_plan_without_v() {
+        let plan = build_download_plan("1.0.0", "aarch64-apple-darwin");
+        assert!(plan.tarball_url.contains("/1.0.0/"));
+    }
+
+    // === NEW: verify_checksum ===
+
+    #[test]
+    fn test_verify_checksum_match() {
+        let checksums = "abc123def456  didyoumean-aarch64-apple-darwin.tar.gz\n";
+        let result = verify_checksum(
+            checksums,
+            "didyoumean-aarch64-apple-darwin.tar.gz",
+            "abc123def456",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_checksum_mismatch() {
+        let checksums = "abc123  file.tar.gz\n";
+        let result = verify_checksum(checksums, "file.tar.gz", "xyz789");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("mismatch"));
+        assert!(err.contains("abc123"));
+        assert!(err.contains("xyz789"));
+    }
+
+    #[test]
+    fn test_verify_checksum_not_found() {
+        let checksums = "abc123  unrelated.tar.gz\n";
+        let result = verify_checksum(checksums, "didyoumean-linux.tar.gz", "abc123");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_verify_checksum_empty_checksums() {
+        let result = verify_checksum("", "file.tar.gz", "abc123");
+        assert!(result.is_err());
+    }
+
+    // === format_update_decision ===
+
+    #[test]
+    fn test_format_decision_fetch_error() {
+        let d = UpdateDecision::FetchError("network timeout".to_string());
+        let action = format_update_decision(d);
+        match action {
+            UpdateAction::Exit {
+                stderr_lines,
+                exit_code,
+                cache_value,
+            } => {
+                assert_eq!(exit_code, 1);
+                assert!(stderr_lines[0].contains("network timeout"));
+                assert!(stderr_lines[1].contains("Reinstall"));
+                assert!(cache_value.is_none());
+            }
+            UpdateAction::DoUpdate { .. } => panic!("Expected Exit"),
+        }
+    }
+
+    #[test]
+    fn test_format_decision_parse_error() {
+        let d = UpdateDecision::ParseError;
+        let action = format_update_decision(d);
+        match action {
+            UpdateAction::Exit {
+                stderr_lines,
+                exit_code,
+                cache_value,
+            } => {
+                assert_eq!(exit_code, 1);
+                assert!(stderr_lines[0].contains("could not parse"));
+                assert!(cache_value.is_none());
+            }
+            UpdateAction::DoUpdate { .. } => panic!("Expected Exit"),
+        }
+    }
+
+    #[test]
+    fn test_format_decision_already_up_to_date() {
+        let d = UpdateDecision::AlreadyUpToDate("0.2.0".to_string());
+        let action = format_update_decision(d);
+        match action {
+            UpdateAction::Exit {
+                stderr_lines,
+                exit_code,
+                cache_value,
+            } => {
+                assert_eq!(exit_code, 0);
+                assert!(stderr_lines[0].contains("Already up to date"));
+                assert!(stderr_lines[0].contains("v0.2.0"));
+                assert_eq!(cache_value, Some("v0.2.0".to_string()));
+            }
+            UpdateAction::DoUpdate { .. } => panic!("Expected Exit"),
+        }
+    }
+
+    #[test]
+    fn test_format_decision_check_only() {
+        let d = UpdateDecision::CheckOnly {
+            current: "0.2.0".to_string(),
+            latest: "1.0.0".to_string(),
+        };
+        let action = format_update_decision(d);
+        match action {
+            UpdateAction::Exit {
+                stderr_lines,
+                exit_code,
+                cache_value,
+            } => {
+                assert_eq!(exit_code, 0);
+                assert!(stderr_lines[0].contains("1.0.0"));
+                assert!(stderr_lines[0].contains("0.2.0"));
+                assert!(stderr_lines[1].contains("didyoumean update"));
+                assert_eq!(cache_value, Some("v1.0.0".to_string()));
+            }
+            UpdateAction::DoUpdate { .. } => panic!("Expected Exit"),
+        }
+    }
+
+    #[test]
+    fn test_format_decision_need_update() {
+        let d = UpdateDecision::NeedUpdate {
+            current: "0.2.0".to_string(),
+            latest: "1.0.0".to_string(),
+            latest_tag: "v1.0.0".to_string(),
+        };
+        let action = format_update_decision(d);
+        match action {
+            UpdateAction::DoUpdate {
+                current,
+                latest,
+                latest_tag,
+            } => {
+                assert_eq!(current, "0.2.0");
+                assert_eq!(latest, "1.0.0");
+                assert_eq!(latest_tag, "v1.0.0");
+            }
+            UpdateAction::Exit { .. } => panic!("Expected DoUpdate"),
+        }
     }
 }
