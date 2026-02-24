@@ -13,7 +13,7 @@ fn main() {
         Some("uninstall") => cmd_uninstall(),
         Some("--version") => cmd_version(),
         Some("--help") | None => cmd_help(),
-        Some(cmd) => cmd_suggest(cmd),
+        Some(cmd) => cmd_suggest(cmd, &args[2..]),
     };
     std::process::exit(exit_code);
 }
@@ -66,7 +66,7 @@ Environment variables:
     0
 }
 
-fn cmd_suggest(cmd: &str) -> i32 {
+fn cmd_suggest(cmd: &str, extra_args: &[String]) -> i32 {
     let max_distance: usize = env::var("DYM_MAX_DISTANCE")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -91,12 +91,20 @@ fn cmd_suggest(cmd: &str) -> i32 {
     };
     let result = suggest::suggest(cmd, &candidates, max_distance, max_suggestions);
 
+    let args_suffix = if extra_args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", extra_args.join(" "))
+    };
+
     match result {
         SuggestResult::ConfidentCorrect(ref corrected) if !is_root => {
             eprintln!(
-                "[dym] '{}' → '{}'",
+                "[dym] '{}{}' → '{}{}'",
                 cmd,
-                colorize(corrected, Color::YellowBold, use_color)
+                args_suffix,
+                colorize(corrected, Color::YellowBold, use_color),
+                args_suffix
             );
             println!("{}", corrected);
             0
@@ -104,15 +112,19 @@ fn cmd_suggest(cmd: &str) -> i32 {
         SuggestResult::AutoCorrect(ref corrected) if auto_correct_enabled && !is_root => {
             if is_korean {
                 eprintln!(
-                    "[dym] 자동 수정: '{}' → '{}'",
+                    "[dym] 자동 수정: '{}{}' → '{}{}'",
                     cmd,
-                    colorize(corrected, Color::YellowBold, use_color)
+                    args_suffix,
+                    colorize(corrected, Color::YellowBold, use_color),
+                    args_suffix
                 );
             } else {
                 eprintln!(
-                    "[dym] Correcting '{}' to '{}'",
+                    "[dym] Correcting '{}{}' to '{}{}'",
                     cmd,
-                    colorize(corrected, Color::YellowBold, use_color)
+                    args_suffix,
+                    colorize(corrected, Color::YellowBold, use_color),
+                    args_suffix
                 );
             }
             println!("{}", corrected);

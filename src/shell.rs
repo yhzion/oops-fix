@@ -8,7 +8,7 @@ command_not_found_handler() {
     export __DYM_RUNNING=1
 
     local output exit_code
-    output=$(print -l ${(ko)commands} | didyoumean "$1")
+    output=$(print -l ${(ko)commands} | didyoumean "$@")
     exit_code=$?
 
     case $exit_code in
@@ -43,7 +43,7 @@ command_not_found_handle() {
     export __DYM_RUNNING=1
 
     local output exit_code
-    output=$(compgen -c | sort -u | didyoumean "$1")
+    output=$(compgen -c | sort -u | didyoumean "$@")
     exit_code=$?
 
     case $exit_code in
