@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+DYM_TMPDIR=""
+cleanup() { [ -n "$DYM_TMPDIR" ] && rm -rf "$DYM_TMPDIR"; }
+trap cleanup EXIT
+
 main() {
     local version="${DYM_VERSION:-latest}"
     local install_dir="${DYM_INSTALL_DIR:-$HOME/.local/bin}"
@@ -51,9 +55,8 @@ main() {
     mkdir -p "$install_dir"
 
     # Download to temp dir
-    local tmpdir
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
+    DYM_TMPDIR=$(mktemp -d)
+    local tmpdir="$DYM_TMPDIR"
 
     echo "Downloading didyoumean v${version} for ${target}..."
     if command -v curl >/dev/null 2>&1; then

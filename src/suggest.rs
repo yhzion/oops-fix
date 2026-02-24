@@ -222,6 +222,69 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[test]
+    fn test_scan_path_skips_empty_components() {
+        let result = scan_path_from(":/nonexistent/dym_test_empty:");
+        assert!(result.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_path_skips_directories() {
+        let dir = std::env::temp_dir().join("dym_test_skipdir");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(dir.join("subdir")).unwrap();
+
+        let result = scan_path_from(dir.to_str().unwrap());
+        assert!(!result.contains(&"subdir".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scan_path_sorted_output() {
+        use std::fs::File;
+
+        let dir = std::env::temp_dir().join("dym_test_sorted");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        for name in &["zzz", "aaa", "mmm"] {
+            File::create(dir.join(name)).unwrap();
+            #[cfg(unix)]
+            fs::set_permissions(dir.join(name), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let result = scan_path_from(dir.to_str().unwrap());
+        assert_eq!(result, vec!["aaa", "mmm", "zzz"]);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_suggest_distance_2_single() {
+        // "dcokre" → "docker" is distance 2, single match → Suggestions
+        let candidates = vec!["docker".to_string()];
+        let result = suggest("dcokre", &candidates, 2, 5);
+        match result {
+            SuggestResult::Suggestions(s) => assert_eq!(s, vec!["docker"]),
+            other => panic!("Expected Suggestions, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_suggest_sort_by_distance_then_name() {
+        let candidates = vec!["abd".to_string(), "abc".to_string()];
+        let result = suggest("abx", &candidates, 2, 5);
+        match result {
+            SuggestResult::Suggestions(s) => {
+                assert_eq!(s, vec!["abc", "abd"]);
+            }
+            other => panic!("Expected Suggestions, got {:?}", other),
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn test_scan_path_deduplicates() {
