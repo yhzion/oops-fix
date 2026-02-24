@@ -106,7 +106,7 @@ fn cmd_suggest(cmd: &str) -> i32 {
             0
         }
         SuggestResult::AutoCorrect(corrected) => {
-            print_suggestions(cmd, &[corrected.clone()], is_korean, use_color);
+            print_suggestions(cmd, std::slice::from_ref(&corrected), is_korean, use_color);
             println!("{}", corrected);
             1
         }
