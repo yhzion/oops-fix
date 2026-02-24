@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-24
+
 ### Changed
 
 - Renamed project from `didyoumean` to `oops-fix` (binary: `oops`)
@@ -21,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background update notification on command typo (cached, non-blocking, every 24h)
 - SHA256 checksum verification on update
 - Version cache at `~/.cache/oops-fix/latest-version`
+
+### Fixed
+
+- **Critical: prevent fork bomb** when binary is missing from PATH by adding interrupt-safe cleanup to shell hooks
+  - zsh: `{ } always { }` guarantees `__OOPS_RUNNING` guard cleanup on all exit paths including signals
+  - bash: `trap INT TERM` ensures guard cleanup on Ctrl+C / SIGTERM
 
 ## [0.2.0] - 2026-02-24
 
@@ -64,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release workflow for cross-platform builds (x86_64/aarch64, Linux musl/macOS)
 - MIT license
 
-[Unreleased]: https://github.com/yhzion/oops-fix/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yhzion/oops-fix/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/yhzion/oops-fix/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yhzion/oops-fix/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yhzion/oops-fix/releases/tag/v0.1.0
