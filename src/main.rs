@@ -39,10 +39,6 @@ fn cmd_init(shell_arg: Option<&str>) -> i32 {
 }
 
 fn cmd_uninstall(skip_confirm: bool) -> i32 {
-    let is_korean = env::var("LANG")
-        .map(|v| v.starts_with("ko"))
-        .unwrap_or(false);
-
     let home = match env::var("HOME") {
         Ok(h) => h,
         Err(_) => {
@@ -67,43 +63,22 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| format!("{}/.local/bin/didyoumean", home));
 
-    // Show what will be removed
-    if is_korean {
-        eprintln!("제거 대상:");
-        eprintln!("  - 바이너리: {}", binary_path);
-        if let Some(ref rc) = rc_file {
-            eprintln!("  - 쉘 설정: {} (didyoumean 블록)", rc);
-        }
-    } else {
-        eprintln!("Will remove:");
-        eprintln!("  - Binary: {}", binary_path);
-        if let Some(ref rc) = rc_file {
-            eprintln!("  - Shell config: {} (didyoumean block)", rc);
-        }
+    eprintln!("Will remove:");
+    eprintln!("  - Binary: {}", binary_path);
+    if let Some(ref rc) = rc_file {
+        eprintln!("  - Shell config: {} (didyoumean block)", rc);
     }
 
     if !skip_confirm {
         if !io::stdin().is_terminal() {
-            if is_korean {
-                eprintln!("비대화형 모드에서는 --yes 플래그가 필요합니다.");
-            } else {
-                eprintln!("Use --yes to confirm in non-interactive mode.");
-            }
+            eprintln!("Use --yes to confirm in non-interactive mode.");
             return 1;
         }
-        if is_korean {
-            eprint!("\n계속하시겠습니까? [y/N] ");
-        } else {
-            eprint!("\nProceed? [y/N] ");
-        }
+        eprint!("\nProceed? [y/N] ");
         let mut input = String::new();
         io::stdin().read_line(&mut input).ok();
         if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
-            if is_korean {
-                eprintln!("취소되었습니다.");
-            } else {
-                eprintln!("Cancelled.");
-            }
+            eprintln!("Cancelled.");
             return 1;
         }
     }
@@ -134,7 +109,6 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
                     }
                 }
 
-                // Trim trailing empty lines left by block removal
                 while new_lines.last() == Some(&"") {
                     new_lines.pop();
                 }
@@ -145,16 +119,10 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
                     eprintln!("Error writing {}: {}", rc, e);
                     return 1;
                 }
-                if is_korean {
-                    eprintln!("  {} 에서 didyoumean 블록 제거 (백업: {})", rc, backup);
-                } else {
-                    eprintln!(
-                        "  Removed didyoumean block from {} (backup: {})",
-                        rc, backup
-                    );
-                }
-            } else if is_korean {
-                eprintln!("  {} 에 didyoumean 블록 없음 (건너뜀)", rc);
+                eprintln!(
+                    "  Removed didyoumean block from {} (backup: {})",
+                    rc, backup
+                );
             } else {
                 eprintln!("  No didyoumean block in {} (skipped)", rc);
             }
@@ -167,19 +135,11 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
             eprintln!("Error removing {}: {}", binary_path, e);
             return 1;
         }
-        if is_korean {
-            eprintln!("  {} 삭제 완료", binary_path);
-        } else {
-            eprintln!("  Removed {}", binary_path);
-        }
+        eprintln!("  Removed {}", binary_path);
     }
 
     eprintln!();
-    if is_korean {
-        eprintln!("didyoumean이 제거되었습니다. 'exec $SHELL'로 쉘을 재시작하세요.");
-    } else {
-        eprintln!("didyoumean uninstalled. Run 'exec $SHELL' to restart your shell.");
-    }
+    eprintln!("didyoumean uninstalled. Run 'exec $SHELL' to restart your shell.");
     0
 }
 
@@ -189,22 +149,54 @@ fn cmd_version() -> i32 {
 }
 
 fn cmd_help() -> i32 {
-    println!(
+    print!(
         "\
-didyoumean - Shell command typo correction tool
+didyoumean - Typo → Fix → Run. Instantly.
 
-Usage:
-  didyoumean <command>          Suggest corrections for a mistyped command
-  didyoumean init <shell>       Output shell integration code (zsh, bash)
-  didyoumean uninstall [-y]     Remove binary and shell config
-  didyoumean --version          Show version
-  didyoumean --help             Show this help
+USAGE
+  didyoumean <command> [args...]     Correct a mistyped command
+  didyoumean init <zsh|bash>         Output shell integration code
+  didyoumean uninstall [-y]          Remove didyoumean from your system
+  didyoumean --version               Show version
+  didyoumean --help                  Show this help
 
-Environment variables:
-  DYM_AUTO_CORRECT      Enable auto-correction (on/1/true, default: off)
-  DYM_MAX_DISTANCE      Maximum edit distance (default: 2)
-  DYM_MAX_SUGGESTIONS   Maximum suggestions to show (default: 5)
-  NO_COLOR              Disable color output"
+HOW IT WORKS
+  When you mistype a command, the shell's command_not_found hook sends
+  it to didyoumean along with all known commands (builtins + PATH).
+  Damerau-Levenshtein distance is computed for each candidate.
+
+  Exit 0 - Auto-correct & execute
+    Confident match: distance 1, unique best match, command length >= 3.
+    The corrected command runs immediately with your original arguments.
+
+  Exit 1 - Suggest
+    Multiple close matches, or low confidence (short command, distance > 1).
+    Suggestions are displayed. Nothing is executed.
+
+  Exit 2 - No match
+    No similar command found within the maximum edit distance.
+
+EXAMPLES
+  $ gti stash pop
+  [dym] 'gti stash pop' -> 'git stash pop'        # auto-executed
+
+  $ dcoker compose up -d
+  [dym] 'dcoker compose up -d' -> 'docker compose up -d'
+
+  $ gt
+  [dym] Did you mean one of these? (gt)            # too short to auto-correct
+    git
+    gd
+
+  $ xyzabc123
+  [dym] Command 'xyzabc123' not found              # no similar command
+
+ENVIRONMENT
+  DYM_AUTO_CORRECT=on     Also auto-execute lower-confidence corrections
+  DYM_MAX_DISTANCE=2      Maximum edit distance (default: 2)
+  DYM_MAX_SUGGESTIONS=5   Maximum suggestions to show (default: 5)
+  NO_COLOR                Disable colored output
+"
     );
     0
 }
@@ -222,9 +214,6 @@ fn cmd_suggest(cmd: &str, extra_args: &[String]) -> i32 {
         .map(|v| matches!(v.to_lowercase().as_str(), "on" | "1" | "true"))
         .unwrap_or(false);
     let is_root = env::var("EUID").map(|v| v == "0").unwrap_or(false);
-    let is_korean = env::var("LANG")
-        .map(|v| v.starts_with("ko"))
-        .unwrap_or(false);
     let use_color = color_enabled();
 
     let candidates = if !io::stdin().is_terminal() {
@@ -253,68 +242,43 @@ fn cmd_suggest(cmd: &str, extra_args: &[String]) -> i32 {
             0
         }
         SuggestResult::AutoCorrect(ref corrected) if auto_correct_enabled && !is_root => {
-            if is_korean {
-                eprintln!(
-                    "[dym] 자동 수정: '{}{}' → '{}{}'",
-                    cmd,
-                    args_suffix,
-                    colorize(corrected, Color::YellowBold, use_color),
-                    args_suffix
-                );
-            } else {
-                eprintln!(
-                    "[dym] Correcting '{}{}' to '{}{}'",
-                    cmd,
-                    args_suffix,
-                    colorize(corrected, Color::YellowBold, use_color),
-                    args_suffix
-                );
-            }
+            eprintln!(
+                "[dym] Correcting '{}{}' to '{}{}'",
+                cmd,
+                args_suffix,
+                colorize(corrected, Color::YellowBold, use_color),
+                args_suffix
+            );
             println!("{}", corrected);
             0
         }
         SuggestResult::ConfidentCorrect(corrected) | SuggestResult::AutoCorrect(corrected) => {
-            print_suggestions(cmd, std::slice::from_ref(&corrected), is_korean, use_color);
+            print_suggestions(cmd, std::slice::from_ref(&corrected), use_color);
             println!("{}", corrected);
             1
         }
         SuggestResult::Suggestions(ref suggestions) => {
-            print_suggestions(cmd, suggestions, is_korean, use_color);
+            print_suggestions(cmd, suggestions, use_color);
             for s in suggestions {
                 println!("{}", s);
             }
             1
         }
         SuggestResult::NoMatch => {
-            if is_korean {
-                eprintln!("[dym] '{}': 유사한 명령어를 찾을 수 없습니다", cmd);
-            } else {
-                eprintln!("[dym] Command '{}' not found, no similar commands", cmd);
-            }
+            eprintln!("[dym] Command '{}' not found, no similar commands", cmd);
             2
         }
     }
 }
 
-fn print_suggestions(cmd: &str, suggestions: &[String], is_korean: bool, use_color: bool) {
+fn print_suggestions(cmd: &str, suggestions: &[String], use_color: bool) {
     if suggestions.len() == 1 {
-        if is_korean {
-            eprintln!(
-                "[dym] 혹시 '{}'을(를) 찾으셨나요?",
-                colorize(&suggestions[0], Color::Green, use_color)
-            );
-        } else {
-            eprintln!(
-                "[dym] Did you mean '{}'?",
-                colorize(&suggestions[0], Color::Green, use_color)
-            );
-        }
+        eprintln!(
+            "[dym] Did you mean '{}'?",
+            colorize(&suggestions[0], Color::Green, use_color)
+        );
     } else {
-        if is_korean {
-            eprintln!("[dym] '{}' 대신 이 명령어를 찾으셨나요?", cmd);
-        } else {
-            eprintln!("[dym] Did you mean one of these?");
-        }
+        eprintln!("[dym] Did you mean one of these? ({})", cmd);
         for s in suggestions {
             eprintln!("  {}", colorize(s, Color::Green, use_color));
         }

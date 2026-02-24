@@ -1,99 +1,163 @@
 # didyoumean
 
-Shell command typo correction tool using Damerau-Levenshtein distance.
+**Typo → Fix → Run. Instantly.**
 
 [![CI](https://github.com/yhzion/didyoumean/actions/workflows/ci.yml/badge.svg)](https://github.com/yhzion/didyoumean/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<!-- TODO: Add GIF demo -->
+Single binary. No daemon. No config. ~300KB.
 
-## Features
+---
 
-- Suggests similar commands when you mistype in the shell
-- Optional auto-correction mode (opt-in via `DYM_AUTO_CORRECT=on`)
-- Fast single binary — scans `$PATH` and computes Damerau-Levenshtein distance
-- Supports zsh and bash via `command_not_found` hook
-- Korean and English message support (auto-detected from `$LANG`)
-- No auto-correct as root for safety
-- Respects `NO_COLOR` environment variable
+You mistype commands. Everyone does. **didyoumean** catches it before the shell gives up, finds the right command, and runs it — with your arguments intact.
+
+```console
+$ gti stash pop
+[dym] 'gti stash pop' → 'git stash pop'          # runs automatically
+
+$ dcoker compose up -d
+[dym] 'dcoker compose up -d' → 'docker compose up -d'
+
+$ kubeclt get pods -n production
+[dym] 'kubeclt get pods -n production' → 'kubectl get pods -n production'
+
+$ brwe install ripgrep
+[dym] 'brwe install ripgrep' → 'brew install ripgrep'
+```
+
+That's it. No confirmation prompt. No extra keypress. It just works.
 
 ## Install
-
-**One-liner:**
 
 ```bash
 curl -sSfL https://raw.githubusercontent.com/yhzion/didyoumean/main/install.sh | bash
 ```
 
-**From source:**
+Or build from source:
 
 ```bash
 cargo install --git https://github.com/yhzion/didyoumean
 ```
 
-**Manual download:**
-
-Download the binary for your platform from [GitHub Releases](https://github.com/yhzion/didyoumean/releases), verify the SHA256 checksum, and place it in your `$PATH`.
-
-## Setup
-
-Add to your shell config file (`.zshrc` or `.bashrc`):
+Then add to your shell config:
 
 ```bash
-eval "$(didyoumean init zsh)"   # for zsh
-eval "$(didyoumean init bash)"  # for bash
+# ~/.zshrc
+eval "$(didyoumean init zsh)"
+
+# ~/.bashrc
+eval "$(didyoumean init bash)"
 ```
 
-## Examples
+## How it works
 
-**Suggestion mode** (default):
 ```
-$ gti status
-[dym] Did you mean 'git'?
+You type: kubeclt get pods
+                │
+Shell can't find "kubeclt"
+                │
+        ┌───────▼────────┐
+        │  didyoumean     │  Receives all known commands
+        │                 │  (builtins + PATH executables)
+        │  Computes       │
+        │  Damerau-       │  "kubectl" = distance 1
+        │  Levenshtein    │  (transposition of l,t)
+        │  distance       │
+        └───────┬────────┘
+                │
+    Confident? (distance 1, unique, length ≥ 3)
+                │
+          ┌─────┴─────┐
+         YES          NO
+          │            │
+     Exit 0        Exit 1
+     "kubectl"     Show suggestions
+          │
+  Shell runs: kubectl get pods
 ```
 
-**Auto-correct mode** (`DYM_AUTO_CORRECT=on`):
-```
-$ export DYM_AUTO_CORRECT=on
-$ gti status
-[dym] Correcting 'gti' to 'git'
-On branch main
-...
+**No daemon.** Runs only when you mistype — not a background process.
+
+**No network.** Pure local string comparison. Works offline, always.
+
+**No config.** Works out of the box. Env vars available for tuning.
+
+## More examples
+
+### Auto-correction (high confidence)
+
+When the match is unambiguous (distance 1, unique, length ≥ 3), didyoumean auto-corrects and runs:
+
+```console
+$ gti stash pop           →  git stash pop
+$ dcoker ps               →  docker ps
+$ pyhton main.py          →  python main.py
+$ kubeclt get pods        →  kubectl get pods
+$ claer                   →  clear
+$ brwe install ffmpeg     →  brew install ffmpeg
+$ ndoe index.js           →  node index.js
+$ carg build --release    →  cargo build --release
 ```
 
-**No match:**
+### Suggestions (multiple matches or low confidence)
+
+When there are multiple candidates or the command is too short:
+
+```console
+$ gt
+[dym] Did you mean one of these? (gt)
+  git
+  gd
+
+$ nde
+[dym] Did you mean 'node'?
 ```
+
+### No match
+
+```console
 $ xyzabc123
 [dym] Command 'xyzabc123' not found, no similar commands
 ```
+
+### Opt-in auto-correct for lower confidence
+
+```bash
+export DYM_AUTO_CORRECT=on
+```
+
+This also auto-executes matches that don't meet the high-confidence threshold (e.g., short commands).
 
 ## Configuration
 
 | Variable | Description | Default |
 |---|---|---|
-| `DYM_AUTO_CORRECT` | Enable auto-correction (`on`/`1`/`true`) | `off` |
+| `DYM_AUTO_CORRECT` | Auto-execute lower-confidence matches (`on`/`1`/`true`) | `off` |
 | `DYM_MAX_DISTANCE` | Maximum Damerau-Levenshtein distance | `2` |
 | `DYM_MAX_SUGGESTIONS` | Maximum number of suggestions | `5` |
-| `NO_COLOR` | Disable color output (any value) | unset |
+| `NO_COLOR` | Disable colored output (any value) | unset |
 
-## How It Works
+## Why didyoumean?
 
-When you type a command that doesn't exist, the shell calls `command_not_found_handler` (zsh) or `command_not_found_handle` (bash). `didyoumean` hooks into this function, scans all executables in your `$PATH`, computes the Damerau-Levenshtein distance against your input, and returns the closest matches. Exit codes tell the shell handler what to do: 0 = auto-correct (execute the suggestion), 1 = show suggestions, 2 = no match found.
+| | didyoumean | thefuck | pay-respects |
+|---|---|---|---|
+| **When** | Before execution | After execution | Before execution |
+| **Action** | Auto-runs if confident | Type `fuck` to correct | Press `F` to correct |
+| **Runtime** | Native binary (~300KB) | Python 3 required | Native binary (<1MB) |
+| **Config** | Zero | Rule files | TOML rules |
+| **Approach** | Edit distance only | Rule matching + AI | Rule matching + AI |
+| **Memory** | None (runs on demand) | Python process | None (runs on demand) |
 
-## Supported Environments
+**thefuck** runs your wrong command first, then offers a fix after you type `fuck`. You wait for the wrong command to fail, then wait for Python to start, then confirm.
+
+**didyoumean** intercepts *before* execution. If it's confident, your corrected command runs immediately. One mistype, zero extra keystrokes.
+
+## Supported platforms
 
 | OS | Shell | Architecture |
 |---|---|---|
 | Linux | zsh, bash | x86_64, aarch64 |
 | macOS | zsh, bash | x86_64 (Intel), aarch64 (Apple Silicon) |
-
-## Comparison
-
-| Tool | Language | Approach |
-|---|---|---|
-| **didyoumean** | Rust | `command_not_found` hook, single binary, zero config |
-| thefuck | Python | Post-execution correction, requires Python runtime |
-| pay-respects | Rust | Similar approach, more features |
 
 ## Uninstall
 
@@ -101,22 +165,8 @@ When you type a command that doesn't exist, the shell calls `command_not_found_h
 didyoumean uninstall
 ```
 
-## Building from Source
-
-```bash
-git clone https://github.com/yhzion/didyoumean
-cd didyoumean
-cargo build --release
-# Binary at target/release/didyoumean
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes
-4. Push to the branch and open a Pull Request
+Removes the binary and shell config block. Backs up your RC file first.
 
 ## License
 
-MIT
+[MIT](LICENSE)
