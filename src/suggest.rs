@@ -45,15 +45,7 @@ pub fn suggest(
     let best_count = matches.iter().filter(|(_, d)| *d == best_distance).count();
 
     if best_distance == 1 && best_count == 1 {
-        let second_best_distance = matches
-            .iter()
-            .find(|(_, d)| *d > best_distance)
-            .map(|(_, d)| *d);
-        let gap = second_best_distance
-            .map(|d| d - best_distance)
-            .unwrap_or(usize::MAX);
-
-        if cmd_len >= 3 && gap >= 2 {
+        if cmd_len >= 3 {
             SuggestResult::ConfidentCorrect(matches[0].0.clone())
         } else {
             SuggestResult::AutoCorrect(matches[0].0.clone())
@@ -149,20 +141,11 @@ mod tests {
     }
 
     #[test]
-    fn test_not_confident_when_close_second() {
-        // "abd" distance 1 from "abc", "aec" distance 1... wait, both distance 1 = multiple matches
-        // Need: 1st at distance 1, 2nd at distance 2 (gap = 1 < 2)
-        // "abcd" vs "abce" = 1 (substitution), "abcd" vs "abdc" would be transposition...
-        // Input "abce", candidates: ["abcd", "abca"]
-        // "abce" vs "abcd" = 1, "abce" vs "abca" = 1 → multiple matches, not AutoCorrect
-        // Better: input "abce", candidates: ["abcd", "xbce"]
-        // "abce" vs "abcd" = 1, "abce" vs "xbce" = 1 → still multiple
-        // Need one at distance 1, one at distance 2:
-        // Input "abce", candidates: ["abcd", "abxy"]
-        // "abce" vs "abcd" = 1, "abce" vs "abxy" = 2 → gap = 1 < 2
+    fn test_confident_with_close_second() {
+        // distance-1 unique match is confident even with distance-2 nearby
         let candidates = vec!["abcd".to_string(), "abxy".to_string()];
         let result = suggest("abce", &candidates, 2, 5);
-        assert_eq!(result, SuggestResult::AutoCorrect("abcd".to_string()));
+        assert_eq!(result, SuggestResult::ConfidentCorrect("abcd".to_string()));
     }
 
     #[test]
