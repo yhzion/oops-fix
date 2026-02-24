@@ -1,23 +1,23 @@
 use std::process::Command;
 
-fn dym_bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_didyoumean"))
+fn oops_bin() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_oops"))
 }
 
 // --- init tests ---
 
 #[test]
 fn test_init_zsh_output() {
-    let output = dym_bin().args(["init", "zsh"]).output().unwrap();
+    let output = oops_bin().args(["init", "zsh"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("command_not_found_handler"));
-    assert!(stdout.contains("# >>> didyoumean initialize >>>"));
+    assert!(stdout.contains("# >>> oops-fix initialize >>>"));
 }
 
 #[test]
 fn test_init_bash_output() {
-    let output = dym_bin().args(["init", "bash"]).output().unwrap();
+    let output = oops_bin().args(["init", "bash"]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("command_not_found_handle"));
@@ -25,13 +25,13 @@ fn test_init_bash_output() {
 
 #[test]
 fn test_init_no_shell_fails() {
-    let output = dym_bin().arg("init").output().unwrap();
+    let output = oops_bin().arg("init").output().unwrap();
     assert!(!output.status.success());
 }
 
 #[test]
 fn test_init_unsupported_shell_fails() {
-    let output = dym_bin().args(["init", "fish"]).output().unwrap();
+    let output = oops_bin().args(["init", "fish"]).output().unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("unsupported shell"));
@@ -41,15 +41,15 @@ fn test_init_unsupported_shell_fails() {
 
 #[test]
 fn test_version_output() {
-    let output = dym_bin().arg("--version").output().unwrap();
+    let output = oops_bin().arg("--version").output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.starts_with("didyoumean "));
+    assert!(stdout.starts_with("oops "));
 }
 
 #[test]
 fn test_help_output() {
-    let output = dym_bin().arg("--help").output().unwrap();
+    let output = oops_bin().arg("--help").output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("USAGE"));
@@ -58,7 +58,7 @@ fn test_help_output() {
 
 #[test]
 fn test_no_args_shows_help() {
-    let output = dym_bin().output().unwrap();
+    let output = oops_bin().output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("USAGE"));
@@ -68,7 +68,7 @@ fn test_no_args_shows_help() {
 
 #[test]
 fn test_suggest_confident_correct_via_stdin() {
-    let output = dym_bin()
+    let output = oops_bin()
         .arg("gti")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -88,12 +88,12 @@ fn test_suggest_confident_correct_via_stdin() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(stdout.trim(), "git");
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("[dym]"));
+    assert!(stderr.contains("[oops]"));
 }
 
 #[test]
 fn test_suggest_with_args_via_stdin() {
-    let output = dym_bin()
+    let output = oops_bin()
         .args(["gti", "stash", "pop"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -115,7 +115,7 @@ fn test_suggest_with_args_via_stdin() {
 
 #[test]
 fn test_suggest_no_match_via_stdin() {
-    let output = dym_bin()
+    let output = oops_bin()
         .arg("xyzabc123")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -139,7 +139,7 @@ fn test_suggest_no_match_via_stdin() {
 #[test]
 fn test_suggest_multiple_matches_via_stdin() {
     // "gti" matches both "git" (d=1) and "gci" (d=1) → suggestions
-    let output = dym_bin()
+    let output = oops_bin()
         .arg("gti")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -162,8 +162,8 @@ fn test_suggest_multiple_matches_via_stdin() {
 
 #[test]
 fn test_suggest_short_command_auto_correct_disabled() {
-    // "sl" → "ls" is AutoCorrect (short), without DYM_AUTO_CORRECT → exit 1
-    let output = dym_bin()
+    // "sl" → "ls" is AutoCorrect (short), without OOPS_AUTO_CORRECT → exit 1
+    let output = oops_bin()
         .arg("sl")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -183,10 +183,10 @@ fn test_suggest_short_command_auto_correct_disabled() {
 
 #[test]
 fn test_suggest_auto_correct_enabled() {
-    // With DYM_AUTO_CORRECT=on, short command auto-corrects → exit 0
-    let output = dym_bin()
+    // With OOPS_AUTO_CORRECT=on, short command auto-corrects → exit 0
+    let output = oops_bin()
         .arg("sl")
-        .env("DYM_AUTO_CORRECT", "on")
+        .env("OOPS_AUTO_CORRECT", "on")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -207,7 +207,7 @@ fn test_suggest_auto_correct_enabled() {
 
 #[test]
 fn test_suggest_no_color() {
-    let output = dym_bin()
+    let output = oops_bin()
         .arg("gti")
         .env("NO_COLOR", "1")
         .stdin(std::process::Stdio::piped())
@@ -229,10 +229,10 @@ fn test_suggest_no_color() {
 
 #[test]
 fn test_suggest_custom_max_distance() {
-    // With DYM_MAX_DISTANCE=1, "dcokre" (distance 2 from "docker") → no match
-    let output = dym_bin()
+    // With OOPS_MAX_DISTANCE=1, "dcokre" (distance 2 from "docker") → no match
+    let output = oops_bin()
         .arg("dcokre")
-        .env("DYM_MAX_DISTANCE", "1")
+        .env("OOPS_MAX_DISTANCE", "1")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -254,14 +254,14 @@ fn test_suggest_custom_max_distance() {
 #[test]
 fn test_update_check_flag_recognized() {
     // --check should be recognized (may fail due to network, but should not panic)
-    let output = dym_bin().args(["update", "--check"]).output().unwrap();
+    let output = oops_bin().args(["update", "--check"]).output().unwrap();
     // exit 0 = up to date or update available, exit 1 = network error
     assert!(output.status.code().unwrap() <= 1);
 }
 
 #[test]
 fn test_help_mentions_update() {
-    let output = dym_bin().arg("--help").output().unwrap();
+    let output = oops_bin().arg("--help").output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("update"));
 }
@@ -270,7 +270,7 @@ fn test_help_mentions_update() {
 
 #[test]
 fn test_uninstall_non_interactive_without_yes_fails() {
-    let output = dym_bin()
+    let output = oops_bin()
         .arg("uninstall")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -289,24 +289,24 @@ fn test_uninstall_non_interactive_without_yes_fails() {
 
 #[test]
 fn test_uninstall_with_yes_removes_block_and_binary() {
-    let tmp = std::env::temp_dir().join("dym_uninstall_test");
+    let tmp = std::env::temp_dir().join("oops_uninstall_test");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
 
     // Create a fake binary
-    let binary_path = tmp.join("didyoumean");
+    let binary_path = tmp.join("oops");
     std::fs::write(&binary_path, "fake binary").unwrap();
 
-    // Create a fake RC file with didyoumean block
+    // Create a fake RC file with oops-fix block
     let rc_path = tmp.join(".zshrc");
     std::fs::write(
         &rc_path,
-        "export FOO=bar\n# >>> didyoumean initialize >>>\neval \"$(didyoumean init zsh)\"\n# <<< didyoumean initialize <<<\nexport BAZ=qux\n",
+        "export FOO=bar\n# >>> oops-fix initialize >>>\neval \"$(oops init zsh)\"\n# <<< oops-fix initialize <<<\nexport BAZ=qux\n",
     )
     .unwrap();
 
     // Run uninstall with --yes, overriding HOME and SHELL
-    let output = Command::new(env!("CARGO_BIN_EXE_didyoumean"))
+    let output = Command::new(env!("CARGO_BIN_EXE_oops"))
         .args(["uninstall", "--yes"])
         .env("HOME", tmp.to_str().unwrap())
         .env("SHELL", "/bin/zsh")
@@ -324,30 +324,30 @@ fn test_uninstall_with_yes_removes_block_and_binary() {
 
     // Verify RC file was cleaned
     let rc_content = std::fs::read_to_string(&rc_path).unwrap();
-    assert!(!rc_content.contains("didyoumean"));
+    assert!(!rc_content.contains("oops"));
     assert!(rc_content.contains("export FOO=bar"));
     assert!(rc_content.contains("export BAZ=qux"));
 
     // Verify backup was created
-    let backup_path = tmp.join(".zshrc.dym.bak");
+    let backup_path = tmp.join(".zshrc.oops.bak");
     assert!(backup_path.exists());
 
     // Verify stderr mentions removal
-    assert!(stderr.contains("Removed didyoumean block"));
+    assert!(stderr.contains("Removed oops-fix block"));
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]
 fn test_uninstall_no_block_skips() {
-    let tmp = std::env::temp_dir().join("dym_uninstall_noblock");
+    let tmp = std::env::temp_dir().join("oops_uninstall_noblock");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
 
     let rc_path = tmp.join(".zshrc");
     std::fs::write(&rc_path, "export FOO=bar\n").unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_didyoumean"))
+    let output = Command::new(env!("CARGO_BIN_EXE_oops"))
         .args(["uninstall", "--yes"])
         .env("HOME", tmp.to_str().unwrap())
         .env("SHELL", "/bin/zsh")
@@ -373,11 +373,11 @@ fn test_uninstall_no_block_skips() {
 
 #[test]
 fn test_uninstall_with_y_flag() {
-    let tmp = std::env::temp_dir().join("dym_uninstall_yflag");
+    let tmp = std::env::temp_dir().join("oops_uninstall_yflag");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_didyoumean"))
+    let output = Command::new(env!("CARGO_BIN_EXE_oops"))
         .args(["uninstall", "-y"])
         .env("HOME", tmp.to_str().unwrap())
         .env("SHELL", "/bin/fish") // unknown shell → no rc_file

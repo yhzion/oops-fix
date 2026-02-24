@@ -41,10 +41,9 @@ fn get_init_script(shell: Option<&str>) -> Result<String, String> {
             "Error: unsupported shell '{}'. Supported: zsh, bash",
             s
         )),
-        None => Err(
-            "Error: specify shell type (zsh or bash)\nUsage: didyoumean init <zsh|bash>"
-                .to_string(),
-        ),
+        None => {
+            Err("Error: specify shell type (zsh or bash)\nUsage: oops init <zsh|bash>".to_string())
+        }
     }
 }
 
@@ -64,8 +63,8 @@ fn cmd_init(shell_arg: Option<&str>) -> i32 {
 // --- Pure logic: remove init block from RC content ---
 
 fn remove_init_block(content: &str) -> String {
-    let start = "# >>> didyoumean initialize >>>";
-    let end = "# <<< didyoumean initialize <<<";
+    let start = "# >>> oops-fix initialize >>>";
+    let end = "# <<< oops-fix initialize <<<";
 
     let mut new_lines: Vec<&str> = Vec::new();
     let mut skip = false;
@@ -111,7 +110,7 @@ struct UninstallPlan {
 fn build_uninstall_plan(home: &str, shell_path: &str, exe_path: Option<String>) -> UninstallPlan {
     let shell_name = extract_shell_name(shell_path);
     let rc_file = rc_file_for_shell(shell_name, home);
-    let binary_path = exe_path.unwrap_or_else(|| format!("{}/.local/bin/didyoumean", home));
+    let binary_path = exe_path.unwrap_or_else(|| format!("{}/.local/bin/oops", home));
     UninstallPlan {
         binary_path,
         rc_file,
@@ -140,7 +139,7 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
     eprintln!("Will remove:");
     eprintln!("  - Binary: {}", plan.binary_path);
     if let Some(ref rc) = plan.rc_file {
-        eprintln!("  - Shell config: {} (didyoumean block)", rc);
+        eprintln!("  - Shell config: {} (oops-fix block)", rc);
     }
 
     if !skip_confirm {
@@ -159,10 +158,10 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
 
     if let Some(ref rc) = plan.rc_file {
         if let Ok(content) = std::fs::read_to_string(rc) {
-            let start = "# >>> didyoumean initialize >>>";
+            let start = "# >>> oops-fix initialize >>>";
 
             if content.contains(start) {
-                let backup = format!("{}.dym.bak", rc);
+                let backup = format!("{}.oops.bak", rc);
                 let _ = std::fs::copy(rc, &backup);
 
                 let new_content = remove_init_block(&content);
@@ -171,12 +170,9 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
                     eprintln!("Error writing {}: {}", rc, e);
                     return 1;
                 }
-                eprintln!(
-                    "  Removed didyoumean block from {} (backup: {})",
-                    rc, backup
-                );
+                eprintln!("  Removed oops-fix block from {} (backup: {})", rc, backup);
             } else {
-                eprintln!("  No didyoumean block in {} (skipped)", rc);
+                eprintln!("  No oops-fix block in {} (skipped)", rc);
             }
         }
     }
@@ -190,30 +186,30 @@ fn cmd_uninstall(skip_confirm: bool) -> i32 {
     }
 
     eprintln!();
-    eprintln!("didyoumean uninstalled. Run 'exec $SHELL' to restart your shell.");
+    eprintln!("oops uninstalled. Run 'exec $SHELL' to restart your shell.");
     0
 }
 
 fn cmd_version() -> i32 {
-    println!("didyoumean {}", env!("CARGO_PKG_VERSION"));
+    println!("oops {}", env!("CARGO_PKG_VERSION"));
     0
 }
 
 fn help_text() -> &'static str {
     "\
-didyoumean - Typo → Fix → Run. Instantly.
+oops - Typo → Fix → Run. Instantly.
 
 USAGE
-  didyoumean <command> [args...]     Correct a mistyped command
-  didyoumean init <zsh|bash>         Output shell integration code
-  didyoumean update [--check]        Check for / install updates
-  didyoumean uninstall [-y]          Remove didyoumean from your system
-  didyoumean --version               Show version
-  didyoumean --help                  Show this help
+  oops <command> [args...]     Correct a mistyped command
+  oops init <zsh|bash>         Output shell integration code
+  oops update [--check]        Check for / install updates
+  oops uninstall [-y]          Remove oops from your system
+  oops --version               Show version
+  oops --help                  Show this help
 
 HOW IT WORKS
   When you mistype a command, the shell's command_not_found hook sends
-  it to didyoumean along with all known commands (builtins + PATH).
+  it to oops along with all known commands (builtins + PATH).
   Damerau-Levenshtein distance is computed for each candidate.
 
   Exit 0 - Auto-correct & execute
@@ -229,23 +225,23 @@ HOW IT WORKS
 
 EXAMPLES
   $ gti stash pop
-  [dym] 'gti stash pop' -> 'git stash pop'        # auto-executed
+  [oops] 'gti stash pop' -> 'git stash pop'        # auto-executed
 
   $ dcoker compose up -d
-  [dym] 'dcoker compose up -d' -> 'docker compose up -d'
+  [oops] 'dcoker compose up -d' -> 'docker compose up -d'
 
   $ gt
-  [dym] Did you mean one of these? (gt)            # too short to auto-correct
+  [oops] Did you mean one of these? (gt)            # too short to auto-correct
     git
     gd
 
   $ xyzabc123
-  [dym] Command 'xyzabc123' not found              # no similar command
+  [oops] Command 'xyzabc123' not found              # no similar command
 
 ENVIRONMENT
-  DYM_AUTO_CORRECT=on     Also auto-execute lower-confidence corrections
-  DYM_MAX_DISTANCE=2      Maximum edit distance (default: 2)
-  DYM_MAX_SUGGESTIONS=5   Maximum suggestions to show (default: 5)
+  OOPS_AUTO_CORRECT=on     Also auto-execute lower-confidence corrections
+  OOPS_MAX_DISTANCE=2      Maximum edit distance (default: 2)
+  OOPS_MAX_SUGGESTIONS=5   Maximum suggestions to show (default: 5)
   NO_COLOR                Disable colored output
 "
 }
@@ -280,7 +276,7 @@ fn format_suggest_result(
     match result {
         SuggestResult::ConfidentCorrect(ref corrected) if !config.is_root => SuggestOutput {
             stderr_lines: vec![format!(
-                "[dym] '{}{}' \u{2192} '{}{}'",
+                "[oops] '{}{}' \u{2192} '{}{}'",
                 cmd,
                 args_suffix,
                 colorize(corrected, Color::YellowBold, config.use_color),
@@ -294,7 +290,7 @@ fn format_suggest_result(
         {
             SuggestOutput {
                 stderr_lines: vec![format!(
-                    "[dym] Correcting '{}{}' to '{}{}'",
+                    "[oops] Correcting '{}{}' to '{}{}'",
                     cmd,
                     args_suffix,
                     colorize(corrected, Color::YellowBold, config.use_color),
@@ -322,7 +318,7 @@ fn format_suggest_result(
         },
         SuggestResult::NoMatch => SuggestOutput {
             stderr_lines: vec![format!(
-                "[dym] Command '{}' not found, no similar commands",
+                "[oops] Command '{}' not found, no similar commands",
                 cmd
             )],
             stdout_lines: vec![],
@@ -345,10 +341,10 @@ fn parse_is_root(val: Option<String>) -> bool {
 }
 
 fn cmd_suggest(cmd: &str, extra_args: &[String]) -> i32 {
-    let max_distance = parse_env_usize(env::var("DYM_MAX_DISTANCE").ok(), 2);
-    let max_suggestions = parse_env_usize(env::var("DYM_MAX_SUGGESTIONS").ok(), 5);
+    let max_distance = parse_env_usize(env::var("OOPS_MAX_DISTANCE").ok(), 2);
+    let max_suggestions = parse_env_usize(env::var("OOPS_MAX_SUGGESTIONS").ok(), 5);
     let config = SuggestConfig {
-        auto_correct_enabled: parse_auto_correct(env::var("DYM_AUTO_CORRECT").ok()),
+        auto_correct_enabled: parse_auto_correct(env::var("OOPS_AUTO_CORRECT").ok()),
         is_root: parse_is_root(env::var("EUID").ok()),
         use_color: color_enabled(),
     };
@@ -388,11 +384,11 @@ fn build_args_suffix(extra_args: &[String]) -> String {
 fn format_suggestions(cmd: &str, suggestions: &[String], use_color: bool) -> Vec<String> {
     if suggestions.len() == 1 {
         vec![format!(
-            "[dym] Did you mean '{}'?",
+            "[oops] Did you mean '{}'?",
             colorize(&suggestions[0], Color::Green, use_color)
         )]
     } else {
-        let mut lines = vec![format!("[dym] Did you mean one of these? ({})", cmd)];
+        let mut lines = vec![format!("[oops] Did you mean one of these? ({})", cmd)];
         for s in suggestions {
             lines.push(format!("  {}", colorize(s, Color::Green, use_color)));
         }
@@ -475,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_remove_init_block_basic() {
-        let content = "before\n# >>> didyoumean initialize >>>\neval line\n# <<< didyoumean initialize <<<\nafter\n";
+        let content = "before\n# >>> oops-fix initialize >>>\neval line\n# <<< oops-fix initialize <<<\nafter\n";
         let result = remove_init_block(content);
         assert_eq!(result, "before\nafter\n");
     }
@@ -490,22 +486,21 @@ mod tests {
     #[test]
     fn test_remove_init_block_trailing_empty_lines() {
         let content =
-            "before\n# >>> didyoumean initialize >>>\neval\n# <<< didyoumean initialize <<<\n\n\n";
+            "before\n# >>> oops-fix initialize >>>\neval\n# <<< oops-fix initialize <<<\n\n\n";
         let result = remove_init_block(content);
         assert_eq!(result, "before\n");
     }
 
     #[test]
     fn test_remove_init_block_at_start() {
-        let content =
-            "# >>> didyoumean initialize >>>\neval\n# <<< didyoumean initialize <<<\nafter\n";
+        let content = "# >>> oops-fix initialize >>>\neval\n# <<< oops-fix initialize <<<\nafter\n";
         let result = remove_init_block(content);
         assert_eq!(result, "after\n");
     }
 
     #[test]
     fn test_remove_init_block_only_block() {
-        let content = "# >>> didyoumean initialize >>>\neval\n# <<< didyoumean initialize <<<\n";
+        let content = "# >>> oops-fix initialize >>>\neval\n# <<< oops-fix initialize <<<\n";
         let result = remove_init_block(content);
         assert_eq!(result, "\n");
     }
@@ -713,8 +708,8 @@ mod tests {
         assert!(text.contains("HOW IT WORKS"));
         assert!(text.contains("EXAMPLES"));
         assert!(text.contains("ENVIRONMENT"));
-        assert!(text.contains("DYM_AUTO_CORRECT"));
-        assert!(text.contains("DYM_MAX_DISTANCE"));
+        assert!(text.contains("OOPS_AUTO_CORRECT"));
+        assert!(text.contains("OOPS_MAX_DISTANCE"));
         assert!(text.contains("NO_COLOR"));
     }
 
@@ -731,55 +726,43 @@ mod tests {
 
     #[test]
     fn test_run_help_no_args() {
-        let args = vec!["didyoumean".to_string()];
+        let args = vec!["oops".to_string()];
         assert_eq!(run(&args), 0);
     }
 
     #[test]
     fn test_run_help_flag() {
-        let args = vec!["didyoumean".to_string(), "--help".to_string()];
+        let args = vec!["oops".to_string(), "--help".to_string()];
         assert_eq!(run(&args), 0);
     }
 
     #[test]
     fn test_run_version() {
-        let args = vec!["didyoumean".to_string(), "--version".to_string()];
+        let args = vec!["oops".to_string(), "--version".to_string()];
         assert_eq!(run(&args), 0);
     }
 
     #[test]
     fn test_run_init_no_shell() {
-        let args = vec!["didyoumean".to_string(), "init".to_string()];
+        let args = vec!["oops".to_string(), "init".to_string()];
         assert_eq!(run(&args), 1);
     }
 
     #[test]
     fn test_run_init_zsh() {
-        let args = vec![
-            "didyoumean".to_string(),
-            "init".to_string(),
-            "zsh".to_string(),
-        ];
+        let args = vec!["oops".to_string(), "init".to_string(), "zsh".to_string()];
         assert_eq!(run(&args), 0);
     }
 
     #[test]
     fn test_run_init_bash() {
-        let args = vec![
-            "didyoumean".to_string(),
-            "init".to_string(),
-            "bash".to_string(),
-        ];
+        let args = vec!["oops".to_string(), "init".to_string(), "bash".to_string()];
         assert_eq!(run(&args), 0);
     }
 
     #[test]
     fn test_run_init_unsupported() {
-        let args = vec![
-            "didyoumean".to_string(),
-            "init".to_string(),
-            "fish".to_string(),
-        ];
+        let args = vec!["oops".to_string(), "init".to_string(), "fish".to_string()];
         assert_eq!(run(&args), 1);
     }
 
@@ -909,7 +892,7 @@ mod tests {
     #[test]
     fn test_build_uninstall_plan_zsh() {
         let plan = build_uninstall_plan("/home/user", "/bin/zsh", None);
-        assert_eq!(plan.binary_path, "/home/user/.local/bin/didyoumean");
+        assert_eq!(plan.binary_path, "/home/user/.local/bin/oops");
         assert_eq!(plan.rc_file, Some("/home/user/.zshrc".to_string()));
     }
 
@@ -930,9 +913,9 @@ mod tests {
         let plan = build_uninstall_plan(
             "/home/user",
             "/bin/zsh",
-            Some("/usr/local/bin/didyoumean".to_string()),
+            Some("/usr/local/bin/oops".to_string()),
         );
-        assert_eq!(plan.binary_path, "/usr/local/bin/didyoumean");
+        assert_eq!(plan.binary_path, "/usr/local/bin/oops");
     }
 
     #[test]

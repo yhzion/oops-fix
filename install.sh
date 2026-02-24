@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-DYM_TMPDIR=""
-cleanup() { [ -n "$DYM_TMPDIR" ] && rm -rf "$DYM_TMPDIR"; }
+OOPS_TMPDIR=""
+cleanup() { [ -n "$OOPS_TMPDIR" ] && rm -rf "$OOPS_TMPDIR"; }
 trap cleanup EXIT
 
 main() {
-    local version="${DYM_VERSION:-latest}"
-    local install_dir="${DYM_INSTALL_DIR:-$HOME/.local/bin}"
+    local version="${OOPS_VERSION:-latest}"
+    local install_dir="${OOPS_INSTALL_DIR:-$HOME/.local/bin}"
 
     # Detect OS
     local os
@@ -33,21 +33,21 @@ main() {
     fi
 
     local target="${arch}-${os}"
-    local filename="didyoumean-${target}.tar.gz"
+    local filename="oops-fix-${target}.tar.gz"
 
     # Resolve version
     if [ "$version" = "latest" ]; then
         if command -v curl >/dev/null 2>&1; then
-            version=$(curl -sSf "https://api.github.com/repos/yhzion/didyoumean/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+            version=$(curl -sSf "https://api.github.com/repos/yhzion/oops-fix/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
         elif command -v wget >/dev/null 2>&1; then
-            version=$(wget -qO- "https://api.github.com/repos/yhzion/didyoumean/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+            version=$(wget -qO- "https://api.github.com/repos/yhzion/oops-fix/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
         else
             echo "Error: curl or wget is required" >&2
             exit 1
         fi
     fi
 
-    local base_url="https://github.com/yhzion/didyoumean/releases/download/v${version}"
+    local base_url="https://github.com/yhzion/oops-fix/releases/download/v${version}"
     local url="${base_url}/${filename}"
     local checksum_url="${base_url}/SHA256SUMS"
 
@@ -55,10 +55,10 @@ main() {
     mkdir -p "$install_dir"
 
     # Download to temp dir
-    DYM_TMPDIR=$(mktemp -d)
-    local tmpdir="$DYM_TMPDIR"
+    OOPS_TMPDIR=$(mktemp -d)
+    local tmpdir="$OOPS_TMPDIR"
 
-    echo "Downloading didyoumean v${version} for ${target}..."
+    echo "Downloading oops v${version} for ${target}..."
     if command -v curl >/dev/null 2>&1; then
         curl -sSfL "$url" -o "$tmpdir/$filename"
         curl -sSfL "$checksum_url" -o "$tmpdir/SHA256SUMS"
@@ -80,8 +80,8 @@ main() {
 
     # Extract and install
     tar xzf "$filename"
-    install -m 755 didyoumean "$install_dir/didyoumean"
-    echo "Installed didyoumean to $install_dir/didyoumean"
+    install -m 755 oops "$install_dir/oops"
+    echo "Installed oops to $install_dir/oops"
 
     # Check if install_dir is in PATH
     if ! echo "$PATH" | tr ':' '\n' | grep -qx "$install_dir"; then
@@ -97,38 +97,38 @@ main() {
         bash) rc_file="$HOME/.bashrc" ;;
         *)
             echo "Unsupported shell: $shell_name" >&2
-            echo "Add manually: eval \"\$(didyoumean init $shell_name)\"" >&2
+            echo "Add manually: eval \"\$(oops init $shell_name)\"" >&2
             return 0
             ;;
     esac
 
     # Check for existing installation (idempotent)
-    if grep -q "# >>> didyoumean initialize >>>" "$rc_file" 2>/dev/null; then
-        echo "didyoumean is already configured in $rc_file"
+    if grep -q "# >>> oops-fix initialize >>>" "$rc_file" 2>/dev/null; then
+        echo "oops is already configured in $rc_file"
         return 0
     fi
 
     # Warn about existing command_not_found handler
     if grep -q "command_not_found_handle" "$rc_file" 2>/dev/null; then
         echo "Warning: existing command_not_found handler found in $rc_file" >&2
-        echo "  Add manually: eval \"\$(didyoumean init $shell_name)\"" >&2
+        echo "  Add manually: eval \"\$(oops init $shell_name)\"" >&2
         return 0
     fi
 
     # Backup RC file
     if [ -f "$rc_file" ]; then
-        cp "$rc_file" "${rc_file}.dym.bak"
+        cp "$rc_file" "${rc_file}.oops.bak"
     fi
 
     # Add eval line
     cat >> "$rc_file" <<SHELLEOF
 
-# >>> didyoumean initialize >>>
-eval "\$(didyoumean init $shell_name)"
-# <<< didyoumean initialize <<<
+# >>> oops-fix initialize >>>
+eval "\$(oops init $shell_name)"
+# <<< oops-fix initialize <<<
 SHELLEOF
 
-    echo "Added didyoumean to $rc_file (backup: ${rc_file}.dym.bak)"
+    echo "Added oops to $rc_file (backup: ${rc_file}.oops.bak)"
     echo "Run 'source $rc_file' or restart your shell to activate."
 }
 

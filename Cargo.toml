@@ -1,12 +1,16 @@
 [package]
-name = "didyoumean"
+name = "oops-fix"
 version = "0.2.0"
 edition = "2021"
 description = "Shell command typo correction tool using Damerau-Levenshtein distance"
 license = "MIT"
-repository = "https://github.com/yhzion/didyoumean"
+repository = "https://github.com/yhzion/oops-fix"
 keywords = ["cli", "shell", "typo", "autocorrect", "command-not-found"]
 categories = ["command-line-utilities"]
+
+[[bin]]
+name = "oops"
+path = "src/main.rs"
 
 [dependencies]
 strsim = "0.11"

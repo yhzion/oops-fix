@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const GITHUB_API_URL: &str = "https://api.github.com/repos/yhzion/didyoumean/releases/latest";
+const GITHUB_API_URL: &str = "https://api.github.com/repos/yhzion/oops-fix/releases/latest";
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
 // --- Pure data types ---
@@ -110,11 +110,11 @@ pub fn parse_checksum_for_file(checksums: &str, filename: &str) -> Option<String
 
 pub fn cache_dir() -> Option<PathBuf> {
     if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-        Some(PathBuf::from(xdg).join("didyoumean"))
+        Some(PathBuf::from(xdg).join("oops-fix"))
     } else {
         std::env::var("HOME")
             .ok()
-            .map(|home| PathBuf::from(home).join(".cache/didyoumean"))
+            .map(|home| PathBuf::from(home).join(".cache/oops-fix"))
     }
 }
 
@@ -155,7 +155,7 @@ pub fn build_update_notification(
         let latest_clean = latest.strip_prefix('v').unwrap_or(latest);
         if is_newer_version(current_version, latest_clean) {
             Some(format!(
-                "[dym] v{} available (current: v{}). Run 'didyoumean update'",
+                "[oops] v{} available (current: v{}). Run 'oops update'",
                 latest_clean, current_version
             ))
         } else {
@@ -211,10 +211,10 @@ pub fn decide_update(
 /// Pure function: build download URLs from version tag and target triple.
 pub fn build_download_plan(latest_tag: &str, target: &str) -> DownloadPlan {
     let base_url = format!(
-        "https://github.com/yhzion/didyoumean/releases/download/{}",
+        "https://github.com/yhzion/oops-fix/releases/download/{}",
         latest_tag
     );
-    let filename = format!("didyoumean-{}.tar.gz", target);
+    let filename = format!("oops-fix-{}.tar.gz", target);
     let tarball_url = format!("{}/{}", base_url, filename);
     let checksum_url = format!("{}/SHA256SUMS", base_url);
 
@@ -251,7 +251,7 @@ pub fn format_update_decision(decision: UpdateDecision) -> UpdateAction {
         UpdateDecision::FetchError(e) => UpdateAction::Exit {
             stderr_lines: vec![
                 format!("Error: {}", e),
-                "Reinstall: curl -sSfL https://raw.githubusercontent.com/yhzion/didyoumean/main/install.sh | bash".to_string(),
+                "Reinstall: curl -sSfL https://raw.githubusercontent.com/yhzion/oops-fix/main/install.sh | bash".to_string(),
             ],
             exit_code: 1,
             cache_value: None,
@@ -269,7 +269,7 @@ pub fn format_update_decision(decision: UpdateDecision) -> UpdateAction {
         UpdateDecision::CheckOnly { current, latest } => UpdateAction::Exit {
             stderr_lines: vec![
                 format!("v{} available (current: v{})", latest, current),
-                "  Run 'didyoumean update' to install".to_string(),
+                "  Run 'oops update' to install".to_string(),
             ],
             exit_code: 0,
             cache_value: Some(format!("v{}", latest)),
@@ -401,7 +401,7 @@ pub fn background_check() -> i32 {
     0
 }
 
-/// `didyoumean update [--check]`
+/// `oops update [--check]`
 pub fn update(check_only: bool) -> i32 {
     let current = env!("CARGO_PKG_VERSION");
 
@@ -453,10 +453,10 @@ fn do_update(current: &str, latest: &str, latest_tag: &str) -> i32 {
 
     let plan = build_download_plan(latest_tag, &target);
 
-    eprintln!("Updating didyoumean v{} \u{2192} v{}...", current, latest);
+    eprintln!("Updating oops v{} \u{2192} v{}...", current, latest);
 
     // Create temp dir
-    let tmpdir = std::env::temp_dir().join(format!("dym_update_{}", std::process::id()));
+    let tmpdir = std::env::temp_dir().join(format!("oops_update_{}", std::process::id()));
     if let Err(e) = std::fs::create_dir_all(&tmpdir) {
         eprintln!("Error creating temp directory: {}", e);
         return 1;
@@ -516,7 +516,7 @@ fn do_update(current: &str, latest: &str, latest_tag: &str) -> i32 {
         }
     }
 
-    let new_binary = tmpdir.join("didyoumean");
+    let new_binary = tmpdir.join("oops");
     if !new_binary.exists() {
         eprintln!("Error: binary not found in archive");
         return 1;
@@ -680,9 +680,9 @@ mod tests {
 
     #[test]
     fn test_parse_checksum_found() {
-        let checksums = "abc123def456  didyoumean-aarch64-apple-darwin.tar.gz\n789xyz  didyoumean-x86_64-unknown-linux-musl.tar.gz\n";
+        let checksums = "abc123def456  oops-fix-aarch64-apple-darwin.tar.gz\n789xyz  oops-fix-x86_64-unknown-linux-musl.tar.gz\n";
         assert_eq!(
-            parse_checksum_for_file(checksums, "didyoumean-aarch64-apple-darwin.tar.gz"),
+            parse_checksum_for_file(checksums, "oops-fix-aarch64-apple-darwin.tar.gz"),
             Some("abc123def456".to_string())
         );
     }
@@ -714,7 +714,7 @@ mod tests {
         let dir = cache_dir();
         assert!(dir.is_some());
         let path = dir.unwrap();
-        assert!(path.to_str().unwrap().contains("didyoumean"));
+        assert!(path.to_str().unwrap().contains("oops-fix"));
     }
 
     // --- should_check_update ---
@@ -722,13 +722,13 @@ mod tests {
     #[test]
     fn test_should_check_nonexistent() {
         assert!(should_check_update(Path::new(
-            "/nonexistent/dym_test_cache"
+            "/nonexistent/oops_test_cache"
         )));
     }
 
     #[test]
     fn test_should_not_check_fresh_cache() {
-        let tmp = std::env::temp_dir().join("dym_test_fresh_cache");
+        let tmp = std::env::temp_dir().join("oops_test_fresh_cache");
         std::fs::write(&tmp, "v0.2.0").unwrap();
         assert!(!should_check_update(&tmp));
         let _ = std::fs::remove_file(&tmp);
@@ -738,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_read_cached_version_exists() {
-        let tmp = std::env::temp_dir().join("dym_test_read_cache");
+        let tmp = std::env::temp_dir().join("oops_test_read_cache");
         std::fs::write(&tmp, "v0.3.0\n").unwrap();
         assert_eq!(read_cached_version(&tmp), Some("v0.3.0".to_string()));
         let _ = std::fs::remove_file(&tmp);
@@ -746,7 +746,7 @@ mod tests {
 
     #[test]
     fn test_read_cached_version_empty() {
-        let tmp = std::env::temp_dir().join("dym_test_read_cache_empty");
+        let tmp = std::env::temp_dir().join("oops_test_read_cache_empty");
         std::fs::write(&tmp, "").unwrap();
         assert_eq!(read_cached_version(&tmp), None);
         let _ = std::fs::remove_file(&tmp);
@@ -762,9 +762,9 @@ mod tests {
     #[test]
     fn test_cache_dir_xdg() {
         let old = std::env::var("XDG_CACHE_HOME").ok();
-        std::env::set_var("XDG_CACHE_HOME", "/tmp/dym_xdg_test");
+        std::env::set_var("XDG_CACHE_HOME", "/tmp/oops_test_xdg");
         let dir = cache_dir();
-        assert_eq!(dir, Some(PathBuf::from("/tmp/dym_xdg_test/didyoumean")));
+        assert_eq!(dir, Some(PathBuf::from("/tmp/oops_test_xdg/oops-fix")));
         match old {
             Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
             None => std::env::remove_var("XDG_CACHE_HOME"),
@@ -775,7 +775,7 @@ mod tests {
 
     #[test]
     fn test_compute_sha256_known_file() {
-        let tmp = std::env::temp_dir().join("dym_test_sha256");
+        let tmp = std::env::temp_dir().join("oops_test_sha256");
         std::fs::write(&tmp, "hello\n").unwrap();
         let result = compute_sha256(&tmp);
         assert!(result.is_ok());
@@ -786,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_compute_sha256_nonexistent() {
-        let result = compute_sha256(Path::new("/nonexistent/dym_test_sha256"));
+        let result = compute_sha256(Path::new("/nonexistent/oops_test_sha256"));
         assert!(result.is_err());
     }
 
@@ -794,7 +794,7 @@ mod tests {
 
     #[test]
     fn test_write_cache_creates_file() {
-        let tmp = std::env::temp_dir().join("dym_test_write_cache_dir");
+        let tmp = std::env::temp_dir().join("oops_test_write_cache_dir");
         let _ = std::fs::remove_dir_all(&tmp);
 
         let old_xdg = std::env::var("XDG_CACHE_HOME").ok();
@@ -802,7 +802,7 @@ mod tests {
 
         write_cache("v0.5.0");
 
-        let cached = std::fs::read_to_string(tmp.join("didyoumean/latest-version"));
+        let cached = std::fs::read_to_string(tmp.join("oops-fix/latest-version"));
         assert!(cached.is_ok());
         assert_eq!(cached.unwrap(), "v0.5.0");
 
@@ -826,7 +826,7 @@ mod tests {
 
     #[test]
     fn test_temp_dir_guard_cleanup() {
-        let tmp = std::env::temp_dir().join("dym_test_guard");
+        let tmp = std::env::temp_dir().join("oops_test_guard");
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("file.txt"), "test").unwrap();
         assert!(tmp.exists());
@@ -845,7 +845,7 @@ mod tests {
         let msg = n.message.unwrap();
         assert!(msg.contains("1.0.0"));
         assert!(msg.contains("0.2.0"));
-        assert!(msg.contains("didyoumean update"));
+        assert!(msg.contains("oops update"));
         assert!(!n.should_bg_check);
     }
 
@@ -970,13 +970,13 @@ mod tests {
         let plan = build_download_plan("v1.0.0", "aarch64-apple-darwin");
         assert_eq!(
             plan.tarball_url,
-            "https://github.com/yhzion/didyoumean/releases/download/v1.0.0/didyoumean-aarch64-apple-darwin.tar.gz"
+            "https://github.com/yhzion/oops-fix/releases/download/v1.0.0/oops-fix-aarch64-apple-darwin.tar.gz"
         );
         assert_eq!(
             plan.checksum_url,
-            "https://github.com/yhzion/didyoumean/releases/download/v1.0.0/SHA256SUMS"
+            "https://github.com/yhzion/oops-fix/releases/download/v1.0.0/SHA256SUMS"
         );
-        assert_eq!(plan.filename, "didyoumean-aarch64-apple-darwin.tar.gz");
+        assert_eq!(plan.filename, "oops-fix-aarch64-apple-darwin.tar.gz");
     }
 
     #[test]
@@ -996,10 +996,10 @@ mod tests {
 
     #[test]
     fn test_verify_checksum_match() {
-        let checksums = "abc123def456  didyoumean-aarch64-apple-darwin.tar.gz\n";
+        let checksums = "abc123def456  oops-fix-aarch64-apple-darwin.tar.gz\n";
         let result = verify_checksum(
             checksums,
-            "didyoumean-aarch64-apple-darwin.tar.gz",
+            "oops-fix-aarch64-apple-darwin.tar.gz",
             "abc123def456",
         );
         assert!(result.is_ok());
@@ -1019,7 +1019,7 @@ mod tests {
     #[test]
     fn test_verify_checksum_not_found() {
         let checksums = "abc123  unrelated.tar.gz\n";
-        let result = verify_checksum(checksums, "didyoumean-linux.tar.gz", "abc123");
+        let result = verify_checksum(checksums, "oops-fix-linux.tar.gz", "abc123");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
     }
@@ -1104,7 +1104,7 @@ mod tests {
                 assert_eq!(exit_code, 0);
                 assert!(stderr_lines[0].contains("1.0.0"));
                 assert!(stderr_lines[0].contains("0.2.0"));
-                assert!(stderr_lines[1].contains("didyoumean update"));
+                assert!(stderr_lines[1].contains("oops update"));
                 assert_eq!(cache_value, Some("v1.0.0".to_string()));
             }
             UpdateAction::DoUpdate { .. } => panic!("Expected Exit"),

@@ -199,7 +199,7 @@ mod tests {
     fn test_scan_path_returns_executables() {
         use std::fs::File;
 
-        let dir = std::env::temp_dir().join("dym_test_executables");
+        let dir = std::env::temp_dir().join("oops_test_executables");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
@@ -218,20 +218,20 @@ mod tests {
 
     #[test]
     fn test_scan_path_skips_nonexistent_dirs() {
-        let result = scan_path_from("/nonexistent/path/dym_test_12345");
+        let result = scan_path_from("/nonexistent/path/oops_test_12345");
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_scan_path_skips_empty_components() {
-        let result = scan_path_from(":/nonexistent/dym_test_empty:");
+        let result = scan_path_from(":/nonexistent/oops_test_empty:");
         assert!(result.is_empty());
     }
 
     #[cfg(unix)]
     #[test]
     fn test_scan_path_skips_directories() {
-        let dir = std::env::temp_dir().join("dym_test_skipdir");
+        let dir = std::env::temp_dir().join("oops_test_skipdir");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::create_dir_all(dir.join("subdir")).unwrap();
@@ -246,7 +246,7 @@ mod tests {
     fn test_scan_path_sorted_output() {
         use std::fs::File;
 
-        let dir = std::env::temp_dir().join("dym_test_sorted");
+        let dir = std::env::temp_dir().join("oops_test_sorted");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
@@ -290,7 +290,7 @@ mod tests {
     fn test_scan_path_deduplicates() {
         use std::fs::File;
 
-        let dir = std::env::temp_dir().join("dym_test_dedup");
+        let dir = std::env::temp_dir().join("oops_test_dedup");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
