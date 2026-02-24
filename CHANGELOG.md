@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-24
+
+### Added
+
+- 91 unit tests covering all pure logic (97% line coverage)
+- 19 integration tests (stdin pipe, uninstall scenarios, env vars)
+- Git pre-commit hook (cargo fmt, clippy, test)
+
+### Changed
+
+- Refactored main.rs into testable pure functions:
+  `get_init_script`, `remove_init_block`, `build_uninstall_plan`,
+  `confirm_action`, `format_suggest_result`, `parse_candidates`,
+  `parse_env_usize`, `parse_auto_correct`, `parse_is_root`,
+  `extract_shell_name`, `rc_file_for_shell`, `format_suggestions`
+
+### Fixed
+
+- install.sh `tmpdir: unbound variable` error in EXIT trap
+
+## [0.1.0] - 2026-02-24
+
 ### Added
 
 - Core suggestion engine using Damerau-Levenshtein distance (`strsim` crate)
@@ -27,4 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release workflow for cross-platform builds (x86_64/aarch64, Linux musl/macOS)
 - MIT license
 
-[Unreleased]: https://github.com/yhzion/didyoumean/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yhzion/didyoumean/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yhzion/didyoumean/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/yhzion/didyoumean/releases/tag/v0.1.0
